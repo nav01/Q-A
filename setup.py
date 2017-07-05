@@ -1,6 +1,9 @@
 from setuptools import setup
 
 requires = [
+    'deform',
+    'passlib',
+    'pymongo',
     'pyramid',
     'pyramid_chameleon',
 ]

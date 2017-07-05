@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Create A Question</title>
+</head>
+<body>
+    ${structure: form}
+</body>
+</html>

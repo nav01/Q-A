@@ -2,20 +2,36 @@ from pyramid.view import (
     view_config,
     view_defaults
 )
+from pyramid.httpexceptions import HTTPFound
+from pyramid.response import Response
 
-#Used to test the database connection.  Will not go to final production.
-@view_defaults(renderer = 'templates/index.pt')
-class DatabaseViews:
+import colander
+from deform.form import Form
+from deform.exception import ValidationFailure
+from . import forms
+from .models import User
+
+class UserViews:
     def __init__(self,request):
         self.request = request
 
-    @view_config(route_name='hits')
-    def hits(self):
-        hits = 'hits'
-        result = self.request.db.test.update_one({hits:{'$exists': True}}, {'$inc': {hits: 1}})
-        if result.modified_count == 0:
-            result = {hits:1}
-            self.request.db.test.insert_one(result)
+    @view_config(route_name='register', renderer='templates/register.pt')
+    def register(self):
+        schema = forms.RegistrationSchema().bind(request=self.request)
+        form = Form(schema, buttons=('submit',))
+
+        if self.request.method == 'POST':
+            if 'submit' in self.request.POST:
+                try:
+                    appstruct = form.validate(self.request.POST.items())
+                    User.create(appstruct, self.request.db)
+                    return Response('OK')
+                except ValueError as e:
+                    exc = colander.Invalid(form.widget, str(e))
+                    form.widget.handle_error(form,exc)
+                    rendered_form = form.render()
+                except ValidationFailure as e:
+                    rendered_form = e.render()
         else:
-            result = self.request.db.test.find_one({hits:{'$exists': True}})
-        return result
+            rendered_form = form.render()
+        return {'form':rendered_form}
