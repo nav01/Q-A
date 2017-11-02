@@ -97,9 +97,9 @@ class QuestionViews:
                     MCQ.create(question_set_id,appstruct,self.request.db2)
                     return HTTPFound(self.request.route_url('profile'))
                 except ValueError as e:
-                    exc = colander.Invalid(add_topic_form.widget, str(e))
-                    add_topic_form.widget.handle_error(add_topic_form,exc)
-                    add_topic_form, add_question_set_form = self.render_profile_forms(add_topic_form, add_question_set_form)
+                    exc = colander.Invalid(mcq_form.widget, str(e))
+                    mcq_form.widget.handle_error(mcq_form,exc)
+                    template_vars['multiple_choice_form'] = mcq_form.render()
                 except ValidationFailure as e:
                     template_vars['multiple_choice_form'] = e.render()
             else:
@@ -279,6 +279,10 @@ class UserViews:
                 appstruct = add_question_set_form.validate(self.request.POST.items())
                 QuestionSet.create(appstruct,self.request.db2)
                 return HTTPFound(self.request.route_url('profile'))
+            except ValueError as e:
+                exc = colander.Invalid(add_question_set_form.widget, str(e))
+                add_question_set_form.widget.handle_error(add_question_set_form,exc)
+                add_topic_form, add_question_set_form = self.render_profile_forms(add_topic_form, add_question_set_form)
             except ValidationFailure as e:
                 add_topic_form, add_question_set_form = self.render_profile_forms(add_topic_form, e)
 
