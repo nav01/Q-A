@@ -1,0 +1,101 @@
+<html metal:use-macro="load: ./main.pt">
+    <head metal:fill-slot="head">
+        <tal metal:use-macro="load: ./head.pt"/>
+        <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
+        <script src="${request.static_url('qa:javascript/profile_page.js')}"></script>
+        <style type="text/css">
+            .chevron-collapse{
+                float:left;
+            }
+            .just-padding {
+                padding: 15px;
+            }
+
+            .list-group.list-group-root {
+                padding: 0;
+                overflow: hidden;
+            }
+
+            .list-group.list-group-root .list-group {
+                margin-bottom: 0;
+            }
+            .list-group.list-group-root .list-group-item {
+                border-radius: 0;
+                border-width: 1px 0 0 0;
+            }
+
+            .list-group.list-group-root > .list-group-item:first-child {
+                border-top-width: 0;
+            }
+
+            .list-group.list-group-root > .list-group > .list-group-item {
+                padding-left: 30px;
+            }
+
+            .list-group.list-group-root > .list-group > .list-group > .list-group-item {
+                padding-left: 45px;
+            }
+
+            .list-group-item .glyphicon {
+                margin-right: 5px;
+            }
+        </style>
+    </head>
+    <div class="container" metal:fill-slot="content">
+        <div tal:condition="exists: errors" class="alert alert-danger">
+            <ul>
+                <tal:block repeat="error errors">
+                    <li tal:content="error"></li>
+                </tal:block>
+            </ul>
+        </div>
+        <div class="list-group list-group-root well" tal:condition="python:user.topics">
+            <tal:block repeat="topic user.topics">
+                <a href="#topic-${repeat['topic'].index}" class="list-group-item" data-toggle="collapse">
+                    <i class="glyphicon glyphicon-chevron-right chevron-collapse"></i>
+                    <p tal:content="topic.title"/>
+                </a>
+                <div class="list-group collapse" id="topic-${repeat['topic'].index}" tal:condition="exists: topic.question_sets">
+                    <a class="list-group-item" tal:repeat="question_set topic.question_sets">
+                        <p tal:content="question_set.description"/>
+                        <!-- These link-like buttons will not work if moving away from bootstrap -->
+                        <a href="/create/${question_set.id}" role="button" class="btn btn-primary btn-sm">Create Question</a>
+                        <a href="/set/${question_set.id}/answer" role="button" class="btn btn-primary btn-sm">Answer Set</a>
+                        <a href="#" role="button" class="btn btn-primary btn-sm">View All</a>
+                        <a href="#" role="button" class="btn btn-primary btn-sm">Delete Set</a>
+                    </a>
+                </div>
+            </tal:block>
+        </div>
+        <div id="div-show-add-topics">
+            <button type="button" id="button-show-add-topics-form" class="btn btn-xs">
+                <i class="glyphicon glyphicon-plus"></i>
+            </button>
+            <label>Add Topic</label>
+        </div>
+        <div id="div-hide-add-topics" style="display: none">
+            <button type="button" id="button-hide-add-topics-form" class="btn btn-xs">
+                <i class="glyphicon glyphicon-minus"></i>
+            </button>
+        </div>
+        <div id="div-add-topics-form" style="display: none">
+            ${structure:add_topic_form}
+        </div>
+        <tal:block condition="python: user.topics">
+            <div id="div-show-add-question-set">
+                <button type="button" id="button-show-add-question-set-form" class="btn btn-xs">
+                    <i class="glyphicon glyphicon-plus"></i>
+                </button>
+                <label>Add Question Set</label>
+            </div>
+            <div id="div-hide-add-question-set" style="display: none">
+                <button type="button" id="button-hide-add-question-set-form" class="btn btn-xs">
+                    <i class="glyphicon glyphicon-minus"></i>
+                </button>
+            </div>
+            <div id="div-add-question-set-form" style="display: none">
+                ${structure:add_question_set_form}
+            </div>
+        </tal:block>
+    </div>
+</html>

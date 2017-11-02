@@ -1,0 +1,18 @@
+<html metal:use-macro="load: ./main.pt">
+    <head metal:fill-slot="head">
+        <tal metal:use-macro="load: ./head.pt"/>
+        <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
+    </head>
+
+    <div class="container" metal:fill-slot="content">
+        <tal:block repeat="question report">
+            <div>
+                <h4 tal:content="python: question[0]"></h4>
+                <p tal:content="python: question[1]"></p>
+                <p tal:content="python: question[2]"></p>
+                <i tal:condition="python: question[3]" class="glyphicon glyphicon glyphicon-ok"></i>
+                <i tal:condition="python: not question[3]" class="glyphicon glyphicon glyphicon-remove"></i>
+            </div>
+        </tal:block>
+    </div>
+</html>

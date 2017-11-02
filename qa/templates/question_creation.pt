@@ -1,9 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>Create A Question</title>
-</head>
-<body>
-    ${structure: form}
-</body>
+<html metal:use-macro="load: ./main.pt">
+    <head metal:fill-slot="head">
+        <tal metal:use-macro ="load: ./head.pt"/>
+        <script src="${request.static_url('qa:javascript/question_generation.js')}"></script>
+        <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
+    </head>
+    <div class="container" metal:fill-slot="content">
+        <select id="question-controller">
+            <option value=''>Select</option>
+            <option value="multiple-choice">Multiple Choice</option>
+        </select>
+        <div id="multiple-choice" style="display: none">
+            ${structure:multiple_choice_form}
+        </div>
+    </div>
 </html>

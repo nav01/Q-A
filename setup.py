@@ -3,9 +3,11 @@ from setuptools import setup
 requires = [
     'deform',
     'passlib',
+    'psycopg2',
     'pymongo',
     'pyramid',
     'pyramid_chameleon',
+    'sqlalchemy',
 ]
 
 setup(name='qa',
