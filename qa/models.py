@@ -10,6 +10,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, load_only
+from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.schema import DDL
 #There are imports at the method level of classes that inherit from the Question class.
 #This is to resolve an issue with cyclic imports between the forms and models modules.
@@ -64,6 +65,15 @@ class Topic(Base):
         UniqueConstraint('title','user_id'),
     )
 
+    def user_is_owner(user_id, topic_id, db):
+        try:
+            topic = db.query(Topic).\
+                join(User).\
+                filter(Topic.id == topic_id, Topic.user_id == user_id).one()
+            return topic
+        except NoResultFound as _:
+            return False
+
     def create(user_id, values, db):
         try:
             new_topics = [Topic(user_id=user_id, title=value[Topic.title.name]) for value in values[Topic.__table__.name]]
@@ -90,6 +100,16 @@ class QuestionSet(Base):
     __table_args__ = (
         UniqueConstraint('topic_id', 'description'),
     )
+
+    def user_is_contributor(user_id, question_set_id, db):
+        try:
+            question_set = db.query(QuestionSet).\
+                join(Topic).\
+                join(User).\
+                filter(QuestionSet.id == question_set_id, User.id == user_id).one()
+            return question_set
+        except NoResultFound as _:
+            return False
 
     def create(values, db):
         try:
@@ -122,6 +142,9 @@ class QuestionSet(Base):
 
 class Question:
     question_order = Column(Integer)
+    description = Column(String,nullable=False)
+
+    question_type = None
 
     #Derived classes should override and implement the following methods.
     def form_schema(self, **kwargs):
@@ -130,11 +153,16 @@ class Question:
     def report(self):
         pass
 
+    def user_is_contributor(user_id, question_set_id, question_type, question_id, db):
+        if question_type == 'mcq':
+            return MultipleChoiceQuestion.user_is_contributor(user_id, question_set_id, question_id, db)
+        else:
+            return False
+
 class MultipleChoiceQuestion(Base, Question):
     __tablename__='multiple_choice_questions'
 
     id = Column(Integer, primary_key=True)
-    description = Column(String,nullable=False)
     choice_one = Column(String(50), nullable=False)
     choice_two = Column(String(50), nullable=False)
     choice_three = Column(String(50), nullable=False)
@@ -150,18 +178,18 @@ class MultipleChoiceQuestion(Base, Question):
         CheckConstraint(correct_answer <= 3),
     )
 
-    def form_schema(self, request):
-        from .forms import MultipleChoiceAnswer
+    question_type = 'mcq'
 
-        answer_choices = MultipleChoiceAnswer.prepare_choices(self)
-        schema = MultipleChoiceAnswer().bind(request=request,choices=answer_choices,question=self)
-        return schema
-
-    def report(self, answer):
-        choices = [self.choice_one, self.choice_two, self.choice_three, self.choice_four]
-        chosen_answer = choices[answer]
-        correct_answer = choices[self.correct_answer]
-        return (self.description, correct_answer, chosen_answer, chosen_answer == correct_answer)
+    def user_is_contributor(user_id, question_set_id, question_id, db):
+        try:
+            mcq = db.query(MultipleChoiceQuestion).\
+                join(QuestionSet).\
+                join(Topic).\
+                join(User).\
+                filter(MultipleChoiceQuestion.id == question_id, QuestionSet.id == question_set_id, User.id == user_id).one()
+            return mcq
+        except NoResultFound as _:
+            return False
 
     def create(question_set_id, values, db):
         try:
@@ -176,3 +204,16 @@ class MultipleChoiceQuestion(Base, Question):
                 raise ValueError('Some submitted question(s) exist already.')
             elif e.orig.pgcode == errorcodes.CHECK_VIOLATION:
                 raise ValueError('Chosen answer does not exist.')
+
+    def form_schema(self, request):
+        from .forms import MultipleChoiceAnswer
+
+        answer_choices = MultipleChoiceAnswer.prepare_choices(self)
+        schema = MultipleChoiceAnswer().bind(request=request,choices=answer_choices,question=self)
+        return schema
+
+    def report(self, answer):
+        choices = [self.choice_one, self.choice_two, self.choice_three, self.choice_four]
+        chosen_answer = choices[answer]
+        correct_answer = choices[self.correct_answer]
+        return (self.description, correct_answer, chosen_answer, chosen_answer == correct_answer)

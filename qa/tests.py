@@ -287,13 +287,31 @@ class TopicTests(DbTestCase):
 
         self.config = testing.setUp()
         self.create_db()
-        self.user = User(id=1,username='user', password='password')
+
+        user_id = 1
+        self.user = User(id=user_id,username='user', password='password')
         self.db.add(self.user)
         self.db.commit()
 
     def tearDown(self):
         self.clear_db()
         testing.tearDown()
+
+    def test_user_is_owner(self):
+        from .models import Topic
+
+        topic_id = 10
+        bad_user_id = 99
+        bad_topic_id = 33
+        topic = Topic(title='Test Title',id=topic_id,user_id=self.user.id)
+        self.db.add(topic)
+        self.db.commit()
+
+        self.assertTrue(Topic.user_is_owner(self.user.id, topic.id, self.db), 'User is owner.')
+
+        self.assertFalse(Topic.user_is_owner(bad_user_id, topic.id, self.db), 'User is not owner')
+        self.assertFalse(Topic.user_is_owner(self.user.id, bad_topic_id, self.db), 'Topic does not exist')
+        self.assertFalse(Topic.user_is_owner(bad_user_id, bad_topic_id, self.db ), 'User id is bad and Topic does not exist')
 
     def test_topic_create(self):
         from .models import Topic
@@ -325,8 +343,11 @@ class QuestionSetTests(DbTestCase):
 
         self.config = testing.setUp()
         self.create_db()
-        self.user = User(id=1, username='user', password='password')
-        self.topic = Topic(id=1, title='Name', user_id=1)
+
+        user_id = 1
+        topic_id = 83
+        self.user = User(id=user_id, username='user', password='password')
+        self.topic = Topic(id=topic_id, title='Name', user_id=user_id)
         self.db.add(self.user)
         self.db.add(self.topic)
         self.db.commit()
@@ -355,6 +376,20 @@ class QuestionSetTests(DbTestCase):
         QuestionSet.create(values, self.db)
         self.assertRaises(ValueError, QuestionSet.create, values, self.db)
 
+    def test_user_is_contributor(self):
+        from .models import QuestionSet
+
+        set_id = 11
+        bad_set_id = 35
+        user1_id = 1
+        user2_id = 2
+        self.db.add(QuestionSet(id=set_id,description='Test', topic_id=self.topic.id))
+        self.db.commit()
+
+        self.assertTrue(QuestionSet.user_is_contributor(user1_id, set_id, self.db), 'User should have permission!')
+        self.assertFalse(QuestionSet.user_is_contributor(user2_id, set_id, self.db), 'User should not have permission!')
+        self.assertFalse(QuestionSet.user_is_contributor(user1_id, bad_set_id, self.db), 'User should not have permission! Set does not exist.')
+
 class MultipleChoiceQuestionTests(DbTestCase):
     def __init__(self, *args, **kwargs):
         DbTestCase.__init__(self, *args, **kwargs)
@@ -364,26 +399,30 @@ class MultipleChoiceQuestionTests(DbTestCase):
         from .models import Topic
         from .models import QuestionSet
 
+        self.addCleanup(self.clear_db)
         self.config = testing.setUp()
         self.create_db()
-        self.user = User(id=1, username='user', password='password')
-        self.topic = Topic(id=1, title='Name', user_id=1)
-        self.question_set = QuestionSet(id=1, description='Desc', topic_id=1)
+
+        user_id = 4
+        topic_id = 9
+        set_id = 22
+        self.user = User(id=user_id, username='user', password='password')
+        self.topic = Topic(id=topic_id, title='Name', user_id=user_id)
+        self.question_set = QuestionSet(id=set_id, description='Desc', topic_id=topic_id)
         self.db.add(self.user)
         self.db.add(self.topic)
         self.db.add(self.question_set)
         self.db.commit()
+        self.mcq = {
+            'description':'Sample',
+            'choice_one':'One',
+            'choice_two':'Two',
+            'choice_three':'Three',
+            'choice_four':'Four',
+            'correct_answer':1,
+        }
         self.values = {
-            'multiple_choice_questions': [
-                {
-                    'description':'Sample',
-                    'choice_one':'One',
-                    'choice_two':'Two',
-                    'choice_three':'Three',
-                    'choice_four':'Four',
-                    'correct_answer':1,
-                }
-            ]
+            'multiple_choice_questions': [self.mcq]
         }
 
     def tearDown(self):
@@ -394,9 +433,10 @@ class MultipleChoiceQuestionTests(DbTestCase):
         from .models import MultipleChoiceQuestion as MCQ
         from sqlalchemy.orm.exc import NoResultFound
 
+        self.mcq['id'] = 31
         try:
             MCQ.create(self.question_set.id, self.values, self.db)
-            self.db.query(MCQ).filter(MCQ.id==1).one()
+            self.db.query(MCQ).filter(MCQ.id==self.mcq['id']).one()
         except ValueError as e:
             self.fail('Unexpected value error was raised')
         except NoResultFound as e:
@@ -411,15 +451,31 @@ class MultipleChoiceQuestionTests(DbTestCase):
     def test_correct_answer_constraints(self):
         from .models import MultipleChoiceQuestion as MCQ
 
-        self.values['multiple_choice_questions'][0]['correct_answer'] = -1
+        below_range_num = -1
+        above_range_num = 4
+        self.values['multiple_choice_questions'][0]['correct_answer'] = below_range_num
         self.assertRaises(ValueError, MCQ.create,self.question_set.id, self.values, self.db)
 
-        self.values['multiple_choice_questions'][0]['correct_answer'] = 4
+        self.values['multiple_choice_questions'][0]['correct_answer'] = above_range_num
         self.assertRaises(ValueError, MCQ.create,self.question_set.id, self.values, self.db)
+
+    def test_user_is_contributor(self):
+        from .models import MultipleChoiceQuestion as MCQ, User
+
+        self.mcq['id'] = 19
+        bad_question_id = 100
+        bad_set_id = 23
+        bad_user_id = 5
+        MCQ.create(self.question_set.id, self.values, self.db)
+
+        self.assertTrue(MCQ.user_is_contributor(self.user.id, self.question_set.id, self.mcq['id'], self.db), 'User should have permission!')
+        self.assertFalse(MCQ.user_is_contributor(self.user.id, self.question_set.id, bad_question_id, self.db), 'User should not have permission because question does not exist!')
+        self.assertFalse(MCQ.user_is_contributor(self.user.id, self.question_set.id, bad_set_id, self.db), 'User should not have permission because set does not exist!')
+        self.assertFalse(MCQ.user_is_contributor(bad_user_id, self.question_set.id, self.mcq['id'], self.db), 'User should not have permission because user does not exist!')
 
 class SessionTests(unittest.TestCase):
     def test_login(self):
-        from .views import Session
+        from .security import Session
 
         session = {}
         user = StubUser()
@@ -430,20 +486,20 @@ class SessionTests(unittest.TestCase):
         self.assertTrue(session['user_db_id'] == user.id)
 
     def test_logged_in(self):
-        from .views import Session
+        from .security import Session
 
         session = {'logged_in': True}
         self.assertTrue(Session.logged_in(session))
 
     def test_logout(self):
-        from .views import Session
+        from .security import Session
 
         session = {'logged_in':True}
         Session.logout(session)
         self.assertFalse(Session.logged_in(session))
 
     def test_user_id(self):
-        from .views import Session
+        from .security import Session
         session= {'user_db_id': 0}
         self.assertEqual(Session.user_id(session), 0)
 
@@ -516,6 +572,110 @@ class QuestionSetStateTests(unittest.TestCase):
 
         self.assertEqual(list_type, report.__class__, 'Report should return a list.')
 
+class AuthorizationTests(DbTestCase):
+    def __init__(self, *args, **kwargs):
+        DbTestCase.__init__(self, *args, **kwargs)
+
+    def setUp(self):
+        from .models import User, Topic, QuestionSet, MultipleChoiceQuestion as MCQ
+
+        self.config = testing.setUp()
+        self.config.add_route('login','/login')
+        self.config.add_route('profile','/profile')
+
+        self.create_db()
+        #Ids are random because they are compared to see whether permission is granted.
+        user_id1=5
+        user_id2=2
+        topic_id=3
+        set_id=7
+        question_id=16
+
+        self.user = User(id=user_id1,username='test',password='test')
+        self.user2 = User(id=user_id2, username='test2',password='test')
+        self.topic = Topic(id=topic_id, title='Name', user_id=user_id1)
+        self.question_set = QuestionSet(id=set_id, description='Desc', topic_id=topic_id)
+        self.mcq = MCQ(**{
+            'id':question_id,
+            'question_set_id':set_id,
+            'description':'Sample',
+            'choice_one':'One',
+            'choice_two':'Two',
+            'choice_three':'Three',
+            'choice_four':'Four',
+            'correct_answer':1,
+        })
+        self.db.add_all([self.user, self.user2, self.topic, self.question_set, self.mcq])
+        self.db.commit()
+        #additional decorators on top of the viewconfig method require the
+        #decorator to call a view callable which accepts context and request args.
+        self.dummy_view = lambda context, request: True
+
+    def tearDown(self):
+        self.clear_db()
+        testing.tearDown()
+
+    def test_requires_logged_in(self):
+        from .security import Session, requires_logged_in
+
+        request = testing.DummyRequest()
+        decorated_view = requires_logged_in(self.dummy_view)
+        self.assertEqual(decorated_view(None,request).location, "http://example.com/login", "Should redirect to login")
+        Session.login(request.session,StubUser())
+        self.assertTrue(decorated_view(None,request), "Should return self.dummy_view value of True")
+
+    def test_requires_not_logged_in(self):
+        from .security import Session, requires_not_logged_in
+
+        request = testing.DummyRequest()
+        decorated_view = requires_not_logged_in(self.dummy_view)
+        self.assertTrue(decorated_view(None,request), "Should return self.dummy_view value of True")
+
+        Session.login(request.session,StubUser())
+        self.assertEqual(decorated_view(None,request).location,"http://example.com/profile", "Should redirect to profile.")
+
+    def test_requires_topic_owner(self):
+        from .security import Session, requires_topic_owner
+        from pyramid.httpexceptions import HTTPForbidden
+
+        request = testing.DummyRequest()
+        request.db2 = self.db
+        Session.login(request.session, self.user)
+        request.matchdict = {'topic_id':self.topic.id}
+        decorated_view = requires_topic_owner(self.dummy_view)
+        self.assertTrue(decorated_view(None,request), "Should return self.dummy_view value of True")
+
+        Session.login(request.session, self.user2)
+        self.assertRaises(HTTPForbidden, decorated_view, None, request)
+
+    def test_requires_question_set_contributor(self):
+        from .security import Session, requires_question_set_contributor
+        from pyramid.httpexceptions import HTTPForbidden
+
+        request = testing.DummyRequest()
+        request.db2 = self.db
+        Session.login(request.session, self.user)
+        request.matchdict = {'question_set_id':self.question_set.id}
+        decorated_view = requires_question_set_contributor(self.dummy_view)
+        self.assertTrue(decorated_view(None,request), "Should return self.dummy_view value of True")
+
+        Session.login(request.session, self.user2)
+        self.assertRaises(HTTPForbidden, decorated_view, None, request)
+
+    def test_requires_question_contributor(self):
+        from .security import Session, requires_question_contributor
+        from pyramid.httpexceptions import HTTPForbidden
+
+        request = testing.DummyRequest()
+        request.db2 = self.db
+        Session.login(request.session, self.user)
+        request.matchdict = {'question_set_id':self.question_set.id, 'type': 'mcq', 'question_id': self.mcq.id }
+        decorated_view = requires_question_contributor(self.dummy_view)
+        self.assertTrue(decorated_view(None,request), "Should return self.dummy_view value of True")
+
+        Session.login(request.session, self.user2)
+        self.assertRaises(HTTPForbidden, decorated_view, None, request)
+
 #Stub Classes and Methods
 class StubQuestion:
     def __init__(self, order):
@@ -525,6 +685,6 @@ class StubQuestion:
         return('','','',True)
 
 class StubUser:
-    def __init__(self):
+    def __init__(self, user_id=1):
         self.username = 'bob'
-        self.id = 1
+        self.id = user_id

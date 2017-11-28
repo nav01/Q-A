@@ -15,29 +15,13 @@ from .models import(
     Topic,
     User,
 )
-
-class Session:
-    #Authentication
-    __LOGGED_IN = 'logged_in'
-    __USER = 'user'
-    __USER_DB_ID = 'user_db_id'
-
-    #Question Set State
-    QUESTION_STATE = 'question_state'
-
-    def login(session,user):
-        session[Session.__LOGGED_IN] = True
-        session[Session.__USER] = user.username
-        session[Session.__USER_DB_ID] = user.id
-
-    def logged_in(session):
-        return Session.__LOGGED_IN in session
-
-    def logout(session):
-        session.clear()
-
-    def user_id(session):
-        return session[Session.__USER_DB_ID]
+from .security import(
+    Session,
+    requires_logged_in,
+    requires_not_logged_in,
+    requires_question_set_contributor,
+    requires_question_contributor,
+)
 
 class QuestionSetState:
     def __init__(self, questions, question_set_id):
@@ -76,19 +60,29 @@ class QuestionSetState:
             report.append(question.report(self.answers[i]))
         return report
 
+class QuestionSetViews:
+    def __init__(self,request):
+        self.request = request
+
+    @view_config(route_name='view_question_set', renderer='templates/question_set.pt', decorator=(requires_logged_in, requires_question_set_contributor))
+    def view_set(self):
+        questions = QuestionSet.get_questions(self.request.question_set.id, self.request.db2)
+        return {
+            'page_title': "Viewing Question Set",
+            'question_set_description': self.request.question_set.description,
+            'question_set_id': self.request.question_set.id,
+            'questions': questions,
+        }
+
 class QuestionViews:
     def __init__(self,request):
         self.request = request
 
-    @view_config(route_name='create',renderer='templates/question_creation.pt')
-    def create(self):
-        if not Session.logged_in(self.request.session):
-            return HTTPFound(self.request.route_url('login'))
-
+    @view_config(route_name='create_question',renderer='templates/question_creation.pt', decorator=(requires_logged_in, requires_question_set_contributor))
+    def create_question(self):
         template_vars = {'page_title':'Create Question'}
         schema = forms.MultipleChoiceSchema().bind(request=self.request)
         mcq_form = Form(schema, buttons=('create multiple choice question',))
-
         if self.request.method == 'POST':
             if 'create_multiple_choice_question' in self.request.POST:
                 try:
@@ -108,13 +102,16 @@ class QuestionViews:
             template_vars['multiple_choice_form'] = mcq_form.render()
         return template_vars
 
+    @view_config(route_name='delete_question', decorator=(requires_logged_in, requires_question_contributor))
+    def delete_question(self):
+        self.request.db2.delete(self.request.question)
+        self.request.db2.commit()
+        return HTTPFound(self.request.referrer)
+
     #Sets up the list of questions for the user to answer and presents the first question.
     #There is no progress saved and if the page is refreshed the user has to start again.
-    @view_config(route_name='answer_set', renderer='templates/answer.pt', request_method='GET')
+    @view_config(route_name='answer_set', renderer='templates/answer.pt', request_method='GET',decorator=(requires_logged_in, requires_question_set_contributor))
     def setup(self):
-        if not Session.logged_in(self.request.session):
-            return HTTPFound(self.request.route_url('login'))
-
         question_set_id = self.request.matchdict['question_set_id']
         question_set = QuestionSet.get_questions(question_set_id, self.request.db2)
         try:
@@ -129,12 +126,9 @@ class QuestionViews:
             self.request.session.flash(str(e))
             return HTTPFound(self.request.route_url('profile'))
 
-    @view_config(route_name='answer_set', renderer='templates/answer.pt', request_method='POST')
+    @view_config(route_name='answer_set', renderer='templates/answer.pt', request_method='POST',decorator=(requires_logged_in, requires_question_set_contributor))
     def answer(self):
-        if not Session.logged_in(self.request.session):
-            return HTTPFound(self.request.route_url('login'))
-
-        if 'submit' in self.request.POST:
+        if 'submit' in self.request.POST and Session.QUESTION_STATE in self.request.session:
             template_vars = {'page_title':'Answer'}
             try:
                 #Store the previous question's answer.
@@ -160,11 +154,8 @@ class QuestionViews:
 
     #Displays the results of the user answering the question set and clears the question
     #state in the session.
-    @view_config(route_name='report', renderer='templates/report.pt')
+    @view_config(route_name='report', renderer='templates/report.pt',decorator=(requires_logged_in,))
     def report(self):
-        if not Session.logged_in(self.request.session):
-            return HTTPFound(self.request.route_url('login'))
-
         template_vars = {'page_title':'Report'}
         if Session.QUESTION_STATE in self.request.session and self.request.session[Session.QUESTION_STATE].ready_for_report():
             template_vars['report'] = self.request.session[Session.QUESTION_STATE].get_report()
@@ -204,11 +195,8 @@ class UserViews:
         else:
             return topic_form.render(), None
 
-    @view_config(route_name='register', renderer='templates/register.pt')
+    @view_config(route_name='register', renderer='templates/register.pt', decorator=(requires_not_logged_in,))
     def register(self):
-        if Session.logged_in(self.request.session):
-            return HTTPFound(self.request.route_url('profile'))
-
         schema = forms.RegistrationSchema().bind(request=self.request)
         form = Form(schema, buttons=('submit',))
         if self.request.method == 'POST' and 'submit' in self.request.POST:
@@ -227,11 +215,8 @@ class UserViews:
             rendered_form = form.render()
         return {'page_title':'Register','form':rendered_form}
 
-    @view_config(route_name='login', renderer='templates/login.pt')
+    @view_config(route_name='login', renderer='templates/login.pt', decorator=(requires_not_logged_in,))
     def login(self):
-        if Session.logged_in(self.request.session):
-            return HTTPFound(self.request.route_url('profile'))
-
         schema = forms.LoginSchema().bind(request=self.request)
         form = Form(schema, buttons=('Login',))
 
@@ -252,16 +237,13 @@ class UserViews:
             rendered_form = form.render()
         return {'page_title':'Login','form':rendered_form}
 
-    @view_config(route_name='logout')
+    @view_config(route_name='logout',decorator=(requires_logged_in,))
     def logout(self):
         Session.logout(self.request.session)
         return HTTPFound(self.request.route_url('login'))
 
-    @view_config(route_name='profile', renderer='templates/profile.pt', request_method='POST')
+    @view_config(route_name='profile', renderer='templates/profile.pt', request_method='POST', decorator=(requires_logged_in,))
     def profile_post(self):
-        if not Session.logged_in(self.request.session):
-            return HTTPFound(self.request.route_url('login'))
-
         template_vars, add_topic_form, add_question_set_form = self.profile_vars()
         if 'add_topics' in self.request.POST:
             try:
@@ -292,7 +274,7 @@ class UserViews:
 
         return template_vars
 
-    @view_config(route_name='profile', renderer='templates/profile.pt', request_method='GET')
+    @view_config(route_name='profile', renderer='templates/profile.pt', request_method='GET', decorator=(requires_logged_in,))
     def profile_get(self):
         if not Session.logged_in(self.request.session):
             return HTTPFound(self.request.route_url('login'))

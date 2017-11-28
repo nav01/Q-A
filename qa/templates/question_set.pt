@@ -1,0 +1,24 @@
+<html metal:use-macro="load: ./main.pt">
+    <head metal:fill-slot="head">
+        <tal metal:use-macro="load: ./head.pt"/>
+        <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
+    </head>
+    <div class="container" metal:fill-slot="content">
+        <div tal:condition="exists: errors" class="alert alert-danger">
+            <ul>
+                <tal:block repeat="error errors">
+                    <li tal:content="error"></li>
+                </tal:block>
+            </ul>
+        </div>
+        <h1>${question_set_description}</h1>
+        <ol>
+            <tal:block repeat="question questions">
+                <li>
+                    <p tal:content="question.description">
+                    <a href="/set/${question_set_id}/question/${question.__class__.question_type}/${question.id}/delete" role="button" class="btn btn-primary btn-sm">Delete</a>
+                </li>
+            </tal:block>
+        </ol>
+    </div>
+</html>

@@ -1,17 +1,9 @@
 import deform
-from pymongo import MongoClient
 from pyramid.config import Configurator
 from pyramid.session import UnencryptedCookieSessionFactoryConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy.orm import sessionmaker
 from .models import Base
-
-try:
-    # for python 2
-    from urlparse import urlparse
-except ImportError:
-    # for python 3
-    from urllib.parse import urlparse
 
 def main(global_config, **settings):
     session_factory = UnencryptedCookieSessionFactoryConfig('secret')
@@ -33,8 +25,11 @@ def main(global_config, **settings):
     config.add_route('login','/login')
     config.add_route('logout','/logout')
     config.add_route('profile','/profile')
-    config.add_route('create', '/create/{question_set_id}')
+    config.add_route('create_question', 'set/{question_set_id}/create_question')
+    config.add_route('delete_question', '/set/{question_set_id}/question/{type}/{question_id}/delete')
+    config.add_route('view_question_set', '/set/{question_set_id}/view')
     config.add_route('answer_set', '/set/{question_set_id}/answer')
+    config.add_route('delete_set', '/set{question_set_id}/delete')
     config.add_route('report', '/report')
     config.scan('.views')
     config.add_static_view(name='javascript', path='qa:javascript')
