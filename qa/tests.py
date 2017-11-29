@@ -333,6 +333,17 @@ class TopicTests(DbTestCase):
         Topic.create(self.user.id, values, self.db)
         self.assertRaises(ValueError, Topic.create, self.user.id, values, self.db)
 
+    def test_user_delete_cascades(self):
+        from .models import Topic
+
+        new_topic = Topic(title='Test', user_id=self.user.id)
+        self.db.add(new_topic)
+        self.db.commit()
+        self.db.delete(self.user)
+        self.db.commit()
+
+        self.assertFalse(self.db.query(Topic).filter(Topic.user_id == self.user.id).one_or_none())
+
 class QuestionSetTests(DbTestCase):
     def __init__(self, *args, **kwargs):
         DbTestCase.__init__(self, *args, **kwargs)
@@ -389,6 +400,17 @@ class QuestionSetTests(DbTestCase):
         self.assertTrue(QuestionSet.user_is_contributor(user1_id, set_id, self.db), 'User should have permission!')
         self.assertFalse(QuestionSet.user_is_contributor(user2_id, set_id, self.db), 'User should not have permission!')
         self.assertFalse(QuestionSet.user_is_contributor(user1_id, bad_set_id, self.db), 'User should not have permission! Set does not exist.')
+
+    def test_topic_delete_cascades(self):
+        from .models import QuestionSet
+
+        new_question_set = QuestionSet(description='Test', topic_id=self.topic.id)
+        self.db.add(new_question_set)
+        self.db.commit()
+        self.db.delete(self.topic)
+        self.db.commit()
+
+        self.assertFalse(self.db.query(QuestionSet).filter(QuestionSet.topic_id == self.topic.id).one_or_none())
 
 class MultipleChoiceQuestionTests(DbTestCase):
     def __init__(self, *args, **kwargs):
@@ -472,6 +494,18 @@ class MultipleChoiceQuestionTests(DbTestCase):
         self.assertFalse(MCQ.user_is_contributor(self.user.id, self.question_set.id, bad_question_id, self.db), 'User should not have permission because question does not exist!')
         self.assertFalse(MCQ.user_is_contributor(self.user.id, self.question_set.id, bad_set_id, self.db), 'User should not have permission because set does not exist!')
         self.assertFalse(MCQ.user_is_contributor(bad_user_id, self.question_set.id, self.mcq['id'], self.db), 'User should not have permission because user does not exist!')
+
+    def test_question_set_delete_cascades(self):
+        from .models import MultipleChoiceQuestion as MCQ
+
+        self.mcq['question_set_id'] = self.question_set.id
+        new_mcq = MCQ(**self.mcq)
+        self.db.add(new_mcq)
+        self.db.commit()
+        self.db.delete(self.question_set)
+        self.db.commit()
+
+        self.assertFalse(self.db.query(MCQ).filter(MCQ.question_set_id == self.question_set.id).one_or_none())
 
 class SessionTests(unittest.TestCase):
     def test_login(self):

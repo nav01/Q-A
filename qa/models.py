@@ -25,7 +25,7 @@ class User(Base):
     username = Column(String(25), nullable=False, unique=True)
     password = Column(String, nullable=False)
 
-    topics =  relationship('Topic', back_populates='user')
+    topics =  relationship('Topic', back_populates='user', passive_deletes='all')
 
     def create(values, db):
         try:
@@ -56,10 +56,10 @@ class Topic(Base):
 
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
-    user_id = Column(Integer, ForeignKey('users.id'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='cascade'), nullable=False)
 
     user = relationship('User', back_populates='topics')
-    question_sets = relationship('QuestionSet', back_populates='topic')
+    question_sets = relationship('QuestionSet', back_populates='topic', passive_deletes='all')
 
     __table_args__ = (
         UniqueConstraint('title','user_id'),
@@ -92,10 +92,10 @@ class QuestionSet(Base):
 
     id = Column(Integer, primary_key=True)
     description = Column(String, nullable=False)
-    topic_id = Column(Integer, ForeignKey('topics.id'))
+    topic_id = Column(Integer, ForeignKey('topics.id', ondelete='cascade'), nullable=False)
 
     topic = relationship('Topic', back_populates='question_sets')
-    multiple_choice_questions = relationship('MultipleChoiceQuestion',back_populates='question_set')
+    multiple_choice_questions = relationship('MultipleChoiceQuestion', back_populates='question_set', passive_deletes='all')
 
     __table_args__ = (
         UniqueConstraint('topic_id', 'description'),
@@ -168,7 +168,7 @@ class MultipleChoiceQuestion(Base, Question):
     choice_three = Column(String(50), nullable=False)
     choice_four = Column(String(50), nullable=False)
     correct_answer = Column(Integer, nullable=False)
-    question_set_id = Column(Integer, ForeignKey('question_sets.id'))
+    question_set_id = Column(Integer, ForeignKey('question_sets.id', ondelete='cascade'), nullable=False)
 
     question_set = relationship('QuestionSet', back_populates='multiple_choice_questions')
 

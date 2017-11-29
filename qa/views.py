@@ -21,6 +21,7 @@ from .security import(
     requires_not_logged_in,
     requires_question_set_contributor,
     requires_question_contributor,
+    requires_topic_owner,
 )
 
 class QuestionSetState:
@@ -60,6 +61,17 @@ class QuestionSetState:
             report.append(question.report(self.answers[i]))
         return report
 
+class TopicViews:
+    def __init__(self, request):
+        self.request = request
+
+    @view_config(route_name='delete_topic', decorator=(requires_logged_in, requires_topic_owner))
+    def delete_topic(self):
+        print(self.request.topic)
+        self.request.db2.delete(self.request.topic)
+        self.request.db2.commit()
+        return HTTPFound(self.request.referrer)
+
 class QuestionSetViews:
     def __init__(self,request):
         self.request = request
@@ -73,6 +85,12 @@ class QuestionSetViews:
             'question_set_id': self.request.question_set.id,
             'questions': questions,
         }
+
+    @view_config(route_name='delete_question_set', decorator=(requires_logged_in, requires_question_set_contributor))
+    def delete_set(self):
+        self.request.db2.delete(self.request.question_set)
+        self.db.commit()
+        return HTTPFound(self.request.referrer)
 
 class QuestionViews:
     def __init__(self,request):
@@ -110,7 +128,7 @@ class QuestionViews:
 
     #Sets up the list of questions for the user to answer and presents the first question.
     #There is no progress saved and if the page is refreshed the user has to start again.
-    @view_config(route_name='answer_set', renderer='templates/answer.pt', request_method='GET',decorator=(requires_logged_in, requires_question_set_contributor))
+    @view_config(route_name='answer_question_set', renderer='templates/answer.pt', request_method='GET',decorator=(requires_logged_in, requires_question_set_contributor))
     def setup(self):
         question_set_id = self.request.matchdict['question_set_id']
         question_set = QuestionSet.get_questions(question_set_id, self.request.db2)
@@ -126,7 +144,7 @@ class QuestionViews:
             self.request.session.flash(str(e))
             return HTTPFound(self.request.route_url('profile'))
 
-    @view_config(route_name='answer_set', renderer='templates/answer.pt', request_method='POST',decorator=(requires_logged_in, requires_question_set_contributor))
+    @view_config(route_name='answer_question_set', renderer='templates/answer.pt', request_method='POST',decorator=(requires_logged_in, requires_question_set_contributor))
     def answer(self):
         if 'submit' in self.request.POST and Session.QUESTION_STATE in self.request.session:
             template_vars = {'page_title':'Answer'}
