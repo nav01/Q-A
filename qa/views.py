@@ -72,6 +72,34 @@ class TopicViews:
         self.request.db2.commit()
         return HTTPFound(self.request.referrer)
 
+    #TODO This needs to be made simpler, it's only one text box.
+    @view_config(route_name='edit_topic', renderer='templates/topic_edit.pt', request_method='GET', decorator=(requires_logged_in, requires_topic_owner))
+    def edit_topic_get(self):
+        edit_form = Form(self.request.topic.edit_schema(), buttons=('save',))
+        return {
+            'page_title': 'Edit Topic',
+            'edit_form': edit_form.render(self.request.topic.__dict__)
+        }
+
+    @view_config(route_name='edit_topic', renderer='templates/topic_edit.pt', request_method='POST', decorator=(requires_logged_in, requires_topic_owner))
+    def edit_topic_post(self):
+        if 'save' in self.request.POST:
+            template_vars = {'page_title': 'Edit Topic'}
+            try:
+                edit_form = Form(self.request.topic.edit_schema(), buttons=('save',))
+                appstruct = edit_form.validate(self.request.POST.items())
+                self.request.topic.edit(appstruct, self.request.db2)
+                return HTTPFound(self.request.route_url('profile'))
+            except ValueError as e:
+                exc = colander.Invalid(edit_form.widget, str(e))
+                edit_form.widget.handle_error(edit_form, exc)
+                template_vars['edit_form'] = edit_form.render()
+            except ValidationFailure as e:
+                template_vars['edit_form'] = e.render()
+        else:
+            return HTTPFound(self.request.route_url('profile'))
+
+        return template_vars
 class QuestionSetViews:
     def __init__(self,request):
         self.request = request
@@ -86,17 +114,48 @@ class QuestionSetViews:
             'questions': questions,
         }
 
+    #TODO This needs to be made simpler, it's only one text box.
+    @view_config(route_name='edit_question_set', renderer='templates/question_set_edit.pt', request_method='GET', decorator=(requires_logged_in, requires_question_set_contributor))
+    def edit_set_get(self):
+        edit_form = Form(self.request.question_set.edit_schema(), buttons=('save',))
+        return {
+            'page_title': 'Edit Question Set',
+            'edit_form': edit_form.render(self.request.question_set.__dict__)
+        }
+
+    @view_config(route_name='edit_question_set', renderer='templates/question_set_edit.pt', request_method='POST', decorator=(requires_logged_in, requires_question_set_contributor))
+    def edit_set_post(self):
+        if 'save' in self.request.POST:
+            template_vars = {'page_title': 'Edit Question Set'}
+            try:
+                edit_form = Form(self.request.question_set.edit_schema(), buttons=('save',))
+                appstruct = edit_form.validate(self.request.POST.items())
+                self.request.question_set.edit(appstruct, self.request.db2)
+                return HTTPFound(self.request.route_url('profile'))
+            except ValueError as e:
+                exc = colander.Invalid(edit_form.widget, str(e))
+                edit_form.widget.handle_error(edit_form, exc)
+                template_vars['edit_form'] = edit_form.render()
+            except ValidationFailure as e:
+                template_vars['edit_form'] = e.render()
+        else:
+            return HTTPFound(self.request.route_url('profile'))
+
+        return template_vars
+
+
+
     @view_config(route_name='delete_question_set', decorator=(requires_logged_in, requires_question_set_contributor))
     def delete_set(self):
         self.request.db2.delete(self.request.question_set)
-        self.db.commit()
+        self.request.db2.commit()
         return HTTPFound(self.request.referrer)
 
 class QuestionViews:
     def __init__(self,request):
         self.request = request
 
-    @view_config(route_name='create_question',renderer='templates/question_creation.pt', decorator=(requires_logged_in, requires_question_set_contributor))
+    @view_config(route_name='create_question', renderer='templates/question_creation.pt', decorator=(requires_logged_in, requires_question_set_contributor))
     def create_question(self):
         template_vars = {'page_title':'Create Question'}
         schema = forms.MultipleChoiceSchema().bind(request=self.request)
@@ -118,6 +177,35 @@ class QuestionViews:
                 template_vars['multiple_choice_form'] = mcq_form.render()
         else:
             template_vars['multiple_choice_form'] = mcq_form.render()
+        return template_vars
+
+    @view_config(route_name='edit_question', renderer='templates/question_edit.pt', request_method='GET', decorator=(requires_logged_in, requires_question_contributor))
+    def edit_question_get(self):
+        edit_form = Form(self.request.question.edit_schema(), buttons=('save',))
+        return {
+            'page_title': 'Edit Question',
+            'edit_form': edit_form.render(self.request.question.__dict__)
+        }
+
+    @view_config(route_name='edit_question', renderer='templates/question_edit.pt', request_method='POST', decorator=(requires_logged_in, requires_question_contributor))
+    def edit_question_post(self):
+        template_vars = {'page_title': 'Edit Question'}
+        if 'save' in self.request.POST:
+            edit_form = Form(self.request.question.edit_schema(), buttons=('save',))
+            try:
+                appstruct = edit_form.validate(self.request.POST.items())
+                self.request.question.edit(appstruct, self.request.db2)
+                #Temporary, need to redirect to question set page
+                return HTTPFound(self.request.route_url('profile'))
+            except ValueError as e:
+                exc = colander.Invalid(edit_form.widget, str(e))
+                edit_form.widget.handle_error(edit_form,exc)
+                template_vars['edit_form'] = edit_form.render()
+            except ValidationFailure as e:
+                template_vars['edit_form'] = e.render()
+        else:
+            return HTTPFound(self.request.route_url('profile'))
+
         return template_vars
 
     @view_config(route_name='delete_question', decorator=(requires_logged_in, requires_question_contributor))
@@ -241,7 +329,7 @@ class UserViews:
         if self.request.method == 'POST' and 'Login' in self.request.POST:
             try:
                 appstruct = form.validate(self.request.POST.items())
-                user= User.login(appstruct, self.request.db2)
+                user = User.login(appstruct, self.request.db2)
                 if user:
                     Session.login(self.request.session, user)
                     return HTTPFound(self.request.route_url('profile'))

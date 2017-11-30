@@ -4,7 +4,6 @@ import colander
 import deform
 import re
 
-
 class CSRFSchema(colander.MappingSchema):
     @colander.deferred
     def __deferred_csrf_default(node, kw):

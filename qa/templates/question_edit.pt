@@ -1,0 +1,9 @@
+<html metal:use-macro="load: ./main.pt">
+    <head metal:fill-slot="head">
+        <tal metal:use-macro ="load: ./head.pt"/>
+        <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
+    </head>
+    <div class="container" metal:fill-slot="content">
+        ${structure:edit_form}
+    </div>
+</html>

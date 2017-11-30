@@ -12,8 +12,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, load_only
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.schema import DDL
-#There are imports at the method level of classes that inherit from the Question class.
+
+#There are imports at the method level of classes that have corresponding forms.
 #This is to resolve an issue with cyclic imports between the forms and models modules.
+#The reason for cyclic imports is so that the form fields can use database column names
+#to reduce additional processing when going from form to model instance.
 
 Base = declarative_base()
 
@@ -51,7 +54,6 @@ class User(Base):
         return db.query(User).filter(User.id==user_id).first()
 
 class Topic(Base):
-    #sql
     __tablename__='topics'
 
     id = Column(Integer, primary_key=True)
@@ -86,8 +88,23 @@ class Topic(Base):
             elif e.orig.pgcode == errorcodes.NOT_NULL_VIOLATION:
                 raise ValueError('A topic title cannot be empty.')
 
+    def edit(self, new_values, db):
+        try:
+            #Said to be a slow method to update via dictionary, but can't find anything better right now.
+            for key, value in new_values.items():
+                setattr(self, key, value)
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            if e.orig.pgcode == errorcodes.UNIQUE_VIOLATION:
+                raise ValueError('A topic with that title exists already.')
+
+    def edit_schema(self):
+        from .forms import Topic
+
+        return Topic()
+
 class QuestionSet(Base):
-    #sql
     __tablename__='question_sets'
 
     id = Column(Integer, primary_key=True)
@@ -123,6 +140,22 @@ class QuestionSet(Base):
             elif e.orig.pgcode == errorcodes.NOT_NULL_VIOLATION:
                 raise ValueError('Some necessary field was left blank.')
 
+    def edit(self, new_values, db):
+        try:
+            #Said to be a slow method to update via dictionary, but can't find anything better right now.
+            for key, value in new_values.items():
+                setattr(self, key, value)
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            if e.orig.pgcode == errorcodes.UNIQUE_VIOLATION:
+                raise ValueError('A question set with that description exists already.')
+
+    def edit_schema(self):
+        from .forms import QuestionSet
+
+        return QuestionSet()
+
     #Either use each ORM class, or do this using the relationship aspect of sqlalchemy.
     #Currently not sure how to do it the 2nd way without loading unnecessary data.
     #Retrieves a list of questions.
@@ -148,6 +181,9 @@ class Question:
 
     #Derived classes should override and implement the following methods.
     def form_schema(self, **kwargs):
+        pass
+
+    def edit_schema(self, **kwargs):
         pass
 
     def report(self):
@@ -205,12 +241,30 @@ class MultipleChoiceQuestion(Base, Question):
             elif e.orig.pgcode == errorcodes.CHECK_VIOLATION:
                 raise ValueError('Chosen answer does not exist.')
 
+    def edit(self, new_values, db):
+        try:
+            #Said to be a slow method to update via dictionary, but can't find anything better right now.
+            for key, value in new_values.items():
+                setattr(self, key, value)
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            if e.orig.pgcode == errorcodes.UNIQUE_VIOLATION:
+                raise ValueError('A question with that description exists already.')
+            elif e.orig.pgcode == errorcodes.CHECK_VIOLATION:
+                raise ValueError('Chosen answer does not exist.')
+
     def form_schema(self, request):
         from .forms import MultipleChoiceAnswer
 
         answer_choices = MultipleChoiceAnswer.prepare_choices(self)
         schema = MultipleChoiceAnswer().bind(request=request,choices=answer_choices,question=self)
         return schema
+
+    def edit_schema(self):
+        from .forms import MultipleChoiceQuestion
+
+        return MultipleChoiceQuestion()
 
     def report(self, answer):
         choices = [self.choice_one, self.choice_two, self.choice_three, self.choice_four]

@@ -344,6 +344,30 @@ class TopicTests(DbTestCase):
 
         self.assertFalse(self.db.query(Topic).filter(Topic.user_id == self.user.id).one_or_none())
 
+    def test_edit_success(self):
+        from .models import Topic
+
+        values = {'user_id': self.user.id, 'title': 'Test Title, Please Ignore'}
+        topic = Topic(**values)
+        self.db.add(topic)
+        self.db.commit()
+
+        values['title'] = '_' + values['title']
+        topic.edit(values, self.db)
+        self.assertEqual(topic.title, values['title'])
+
+    def test_edit_unique_constraint_violation(self):
+        from .models import Topic
+
+        values = {'user_id': self.user.id, 'title': 'Test Title, Please Ignore'}
+        topic = Topic(**values)
+        values['title'] = '_' + values['title']
+        topic2 = Topic(**values)
+        self.db.add_all([topic, topic2])
+        self.db.commit()
+
+        self.assertRaises(ValueError, topic.edit, values, self.db)
+
 class QuestionSetTests(DbTestCase):
     def __init__(self, *args, **kwargs):
         DbTestCase.__init__(self, *args, **kwargs)
@@ -411,6 +435,30 @@ class QuestionSetTests(DbTestCase):
         self.db.commit()
 
         self.assertFalse(self.db.query(QuestionSet).filter(QuestionSet.topic_id == self.topic.id).one_or_none())
+
+    def test_edit_success(self):
+        from .models import QuestionSet
+
+        values = {'topic_id':self.topic.id, 'description':'Question Set'}
+        question_set = QuestionSet(**values)
+        self.db.add(question_set)
+        self.db.commit()
+
+        values['description'] = '_' + values['description']
+        question_set.edit(values, self.db)
+        self.assertEqual(question_set.description, values['description'])
+
+    def test_edit_unique_constraint_violation(self):
+        from .models import QuestionSet
+
+        values = {'topic_id':self.topic.id, 'description':'Question Set'}
+        question_set = QuestionSet(**values)
+        values['description'] = '_' + values['description']
+        question_set2 = QuestionSet(**values)
+        self.db.add_all([question_set,question_set2])
+        self.db.commit()
+
+        self.assertRaises(ValueError, question_set.edit, values, self.db)
 
 class MultipleChoiceQuestionTests(DbTestCase):
     def __init__(self, *args, **kwargs):
@@ -494,6 +542,42 @@ class MultipleChoiceQuestionTests(DbTestCase):
         self.assertFalse(MCQ.user_is_contributor(self.user.id, self.question_set.id, bad_question_id, self.db), 'User should not have permission because question does not exist!')
         self.assertFalse(MCQ.user_is_contributor(self.user.id, self.question_set.id, bad_set_id, self.db), 'User should not have permission because set does not exist!')
         self.assertFalse(MCQ.user_is_contributor(bad_user_id, self.question_set.id, self.mcq['id'], self.db), 'User should not have permission because user does not exist!')
+
+    def test_edit_success(self):
+        from .models import MultipleChoiceQuestion as MCQ
+
+        self.mcq['question_set_id'] = self.question_set.id
+        question = MCQ(**self.mcq)
+        self.db.add(question)
+        self.db.commit()
+
+        new_question_description = '_' + self.mcq['description']
+        self.mcq['description'] = new_question_description
+        question.edit(self.mcq, self.db)
+        self.assertEqual(question.description, new_question_description, 'Description should have changed.')
+
+    def test_edit_unique_constraint_violation(self):
+        from .models import MultipleChoiceQuestion as MCQ
+
+        self.mcq['question_set_id'] = self.question_set.id
+        question = MCQ(**self.mcq)
+        self.mcq['description'] = '_' + self.mcq['description']
+        question2 = MCQ(**self.mcq)
+        self.db.add_all([question,question2])
+        self.db.commit()
+
+        self.assertRaises(ValueError, question.edit, self.mcq, self.db)
+
+    def test_edit_check_constraint_violation(self):
+        from .models import MultipleChoiceQuestion as MCQ
+
+        self.mcq['question_set_id'] = self.question_set.id
+        question = MCQ(**self.mcq)
+        self.db.add(question)
+        self.db.commit()
+
+        self.mcq['correct_answer'] = 200
+        self.assertRaises(ValueError, question.edit, self.mcq, self.db)
 
     def test_question_set_delete_cascades(self):
         from .models import MultipleChoiceQuestion as MCQ
