@@ -68,8 +68,8 @@ class TopicViews:
     @view_config(route_name='delete_topic', decorator=(requires_logged_in, requires_topic_owner))
     def delete_topic(self):
         print(self.request.topic)
-        self.request.db2.delete(self.request.topic)
-        self.request.db2.commit()
+        self.request.db.delete(self.request.topic)
+        self.request.db.commit()
         return HTTPFound(self.request.referrer)
 
     #TODO This needs to be made simpler, it's only one text box.
@@ -88,7 +88,7 @@ class TopicViews:
             try:
                 edit_form = Form(self.request.topic.edit_schema(), buttons=('save',))
                 appstruct = edit_form.validate(self.request.POST.items())
-                self.request.topic.edit(appstruct, self.request.db2)
+                self.request.topic.edit(appstruct, self.request.db)
                 return HTTPFound(self.request.route_url('profile'))
             except ValueError as e:
                 exc = colander.Invalid(edit_form.widget, str(e))
@@ -106,7 +106,7 @@ class QuestionSetViews:
 
     @view_config(route_name='view_question_set', renderer='templates/question_set.pt', decorator=(requires_logged_in, requires_question_set_contributor))
     def view_set(self):
-        questions = QuestionSet.get_questions(self.request.question_set.id, self.request.db2)
+        questions = QuestionSet.get_questions(self.request.question_set.id, self.request.db)
         return {
             'page_title': "Viewing Question Set",
             'question_set_description': self.request.question_set.description,
@@ -130,7 +130,7 @@ class QuestionSetViews:
             try:
                 edit_form = Form(self.request.question_set.edit_schema(), buttons=('save',))
                 appstruct = edit_form.validate(self.request.POST.items())
-                self.request.question_set.edit(appstruct, self.request.db2)
+                self.request.question_set.edit(appstruct, self.request.db)
                 return HTTPFound(self.request.route_url('profile'))
             except ValueError as e:
                 exc = colander.Invalid(edit_form.widget, str(e))
@@ -147,8 +147,8 @@ class QuestionSetViews:
 
     @view_config(route_name='delete_question_set', decorator=(requires_logged_in, requires_question_set_contributor))
     def delete_set(self):
-        self.request.db2.delete(self.request.question_set)
-        self.request.db2.commit()
+        self.request.db.delete(self.request.question_set)
+        self.request.db.commit()
         return HTTPFound(self.request.referrer)
 
 class QuestionViews:
@@ -165,7 +165,7 @@ class QuestionViews:
                 try:
                     appstruct = mcq_form.validate(self.request.POST.items())
                     question_set_id = self.request.matchdict['question_set_id']
-                    MCQ.create(question_set_id,appstruct,self.request.db2)
+                    MCQ.create(question_set_id,appstruct,self.request.db)
                     return HTTPFound(self.request.route_url('profile'))
                 except ValueError as e:
                     exc = colander.Invalid(mcq_form.widget, str(e))
@@ -194,7 +194,7 @@ class QuestionViews:
             edit_form = Form(self.request.question.edit_schema(), buttons=('save',))
             try:
                 appstruct = edit_form.validate(self.request.POST.items())
-                self.request.question.edit(appstruct, self.request.db2)
+                self.request.question.edit(appstruct, self.request.db)
                 #Temporary, need to redirect to question set page
                 return HTTPFound(self.request.route_url('profile'))
             except ValueError as e:
@@ -210,8 +210,8 @@ class QuestionViews:
 
     @view_config(route_name='delete_question', decorator=(requires_logged_in, requires_question_contributor))
     def delete_question(self):
-        self.request.db2.delete(self.request.question)
-        self.request.db2.commit()
+        self.request.db.delete(self.request.question)
+        self.request.db.commit()
         return HTTPFound(self.request.referrer)
 
     #Sets up the list of questions for the user to answer and presents the first question.
@@ -219,7 +219,7 @@ class QuestionViews:
     @view_config(route_name='answer_question_set', renderer='templates/answer.pt', request_method='GET',decorator=(requires_logged_in, requires_question_set_contributor))
     def setup(self):
         question_set_id = self.request.matchdict['question_set_id']
-        question_set = QuestionSet.get_questions(question_set_id, self.request.db2)
+        question_set = QuestionSet.get_questions(question_set_id, self.request.db)
         try:
             template_vars = {'page_title':'Answer'} #Need better title.
             self.request.session[Session.QUESTION_STATE] = QuestionSetState(question_set,question_set_id)
@@ -279,7 +279,7 @@ class UserViews:
     #Returns a dictionary to be passed to the renderer, and two deform forms, the latter of which can be None
     #if the user has not made any topics.
     def profile_vars(self):
-        user = User.get_user(Session.user_id(self.request.session),self.request.db2)
+        user = User.get_user(Session.user_id(self.request.session),self.request.db)
         template_vars = {
             'page_title':'Profile',
             'user':user,
@@ -308,7 +308,7 @@ class UserViews:
         if self.request.method == 'POST' and 'submit' in self.request.POST:
             try:
                 appstruct = form.validate(self.request.POST.items())
-                user = User.create(appstruct, self.request.db2)
+                user = User.create(appstruct, self.request.db)
                 Session.login(self.request.session, user)
                 return HTTPFound(self.request.route_url('profile'))
             except ValueError as e:
@@ -329,7 +329,7 @@ class UserViews:
         if self.request.method == 'POST' and 'Login' in self.request.POST:
             try:
                 appstruct = form.validate(self.request.POST.items())
-                user = User.login(appstruct, self.request.db2)
+                user = User.login(appstruct, self.request.db)
                 if user:
                     Session.login(self.request.session, user)
                     return HTTPFound(self.request.route_url('profile'))
@@ -354,7 +354,7 @@ class UserViews:
         if 'add_topics' in self.request.POST:
             try:
                 appstruct = add_topic_form.validate(self.request.POST.items())
-                Topic.create(Session.user_id(self.request.session),appstruct,self.request.db2)
+                Topic.create(Session.user_id(self.request.session),appstruct,self.request.db)
                 return HTTPFound(self.request.route_url('profile'))
             except ValueError as e:
                 exc = colander.Invalid(add_topic_form.widget, str(e))
@@ -365,7 +365,7 @@ class UserViews:
         elif 'add_question_sets' in self.request.POST:
             try:
                 appstruct = add_question_set_form.validate(self.request.POST.items())
-                QuestionSet.create(appstruct,self.request.db2)
+                QuestionSet.create(appstruct,self.request.db)
                 return HTTPFound(self.request.route_url('profile'))
             except ValueError as e:
                 exc = colander.Invalid(add_question_set_form.widget, str(e))

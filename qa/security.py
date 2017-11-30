@@ -49,7 +49,7 @@ def requires_topic_owner(wrapped):
         except KeyError as _:
             return HTTPForbidden()
 
-        topic = Topic.user_is_owner(user_id, topic_id, request.db2)
+        topic = Topic.user_is_owner(user_id, topic_id, request.db)
         if topic:
             request.topic = topic
             return wrapped(context, request)
@@ -62,7 +62,7 @@ def requires_question_set_contributor(wrapped):
         user_id = Session.user_id(request.session)
         set_id = request.matchdict['question_set_id']
 
-        question_set = QuestionSet.user_is_contributor(user_id, set_id, request.db2)
+        question_set = QuestionSet.user_is_contributor(user_id, set_id, request.db)
         if question_set:
             request.question_set = question_set
             return wrapped(context, request)
@@ -80,7 +80,7 @@ def requires_question_contributor(wrapped):
         except KeyError as _:
             raise HTTPForbidden()
 
-        question = Question.user_is_contributor(user_id, set_id, q_type, q_id, request.db2)
+        question = Question.user_is_contributor(user_id, set_id, q_type, q_id, request.db)
         if question:
             request.question = question
             return wrapped(context, request)

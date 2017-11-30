@@ -17,10 +17,10 @@ def main(global_config, **settings):
     Base.metadata.create_all(sqlalchemy_engine)
     Session = sessionmaker(bind=sqlalchemy_engine)
 
-    def add_db2(request):
+    def add_db(request):
         return Session()
 
-    config.add_request_method(add_db2, 'db2', reify=True)
+    config.add_request_method(add_db, 'db', reify=True)
     config.add_route('register','/register')
     config.add_route('login','/login')
     config.add_route('logout','/logout')

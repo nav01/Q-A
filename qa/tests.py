@@ -67,7 +67,7 @@ class UserViewTests(DbTestCase):
             ('Y33_Hello','Meets requirements.'),
         ]
 
-        self.request.db2 = self.db
+        self.request.db = self.db
         self.request.method = 'POST'
         self.request.POST = {
             self.submit: self.submit,
@@ -130,7 +130,7 @@ class UserViewTests(DbTestCase):
             ("wise","Short, number, symbol, upper"),
         ]
         self.request.method = 'POST'
-        self.request.db2 = self.db
+        self.request.db = self.db
         self.request.POST = {
             self.submit: self.submit,
             self.user_key: 'goodUsername',
@@ -158,7 +158,7 @@ class QuestionViewTests(DbTestCase):
         self.config.add_route('report','/report')
         self.create_db()
         self.request = testing.DummyRequest()
-        self.request.db2 = self.db
+        self.request.db = self.db
         self.request.matchdict['question_set_id'] = 1
 
         self.user = User(id=1, username='user', password='pass')
@@ -757,7 +757,7 @@ class AuthorizationTests(DbTestCase):
         from pyramid.httpexceptions import HTTPForbidden
 
         request = testing.DummyRequest()
-        request.db2 = self.db
+        request.db = self.db
         Session.login(request.session, self.user)
         request.matchdict = {'topic_id':self.topic.id}
         decorated_view = requires_topic_owner(self.dummy_view)
@@ -771,7 +771,7 @@ class AuthorizationTests(DbTestCase):
         from pyramid.httpexceptions import HTTPForbidden
 
         request = testing.DummyRequest()
-        request.db2 = self.db
+        request.db = self.db
         Session.login(request.session, self.user)
         request.matchdict = {'question_set_id':self.question_set.id}
         decorated_view = requires_question_set_contributor(self.dummy_view)
@@ -785,7 +785,7 @@ class AuthorizationTests(DbTestCase):
         from pyramid.httpexceptions import HTTPForbidden
 
         request = testing.DummyRequest()
-        request.db2 = self.db
+        request.db = self.db
         Session.login(request.session, self.user)
         request.matchdict = {'question_set_id':self.question_set.id, 'type': 'mcq', 'question_id': self.mcq.id }
         decorated_view = requires_question_contributor(self.dummy_view)
