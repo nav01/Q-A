@@ -100,9 +100,12 @@ class Topic(Base):
                 raise ValueError('A topic with that title exists already.')
 
     def edit_schema(self):
-        from .forms import Topic
+        from .forms import CSRFSchema, Topic
 
-        return Topic()
+        csrf_schema = CSRFSchema()
+        topic_schema = Topic()
+        csrf_schema.children = csrf_schema.children + topic_schema.children
+        return csrf_schema
 
 class QuestionSet(Base):
     __tablename__='question_sets'
@@ -152,9 +155,12 @@ class QuestionSet(Base):
                 raise ValueError('A question set with that description exists already.')
 
     def edit_schema(self):
-        from .forms import QuestionSet
+        from .forms import CSRFSchema, QuestionSet
 
-        return QuestionSet()
+        csrf_schema = CSRFSchema()
+        question_set_schema = QuestionSet()
+        csrf_schema.children = csrf_schema.children + question_set_schema.children
+        return csrf_schema
 
     #Either use each ORM class, or do this using the relationship aspect of sqlalchemy.
     #Currently not sure how to do it the 2nd way without loading unnecessary data.
@@ -262,9 +268,12 @@ class MultipleChoiceQuestion(Base, Question):
         return schema
 
     def edit_schema(self):
-        from .forms import MultipleChoiceQuestion
+        from .forms import CSRFSchema, MultipleChoiceQuestion
 
-        return MultipleChoiceQuestion()
+        csrf_schema = CSRFSchema()
+        mcq_schema =  MultipleChoiceQuestion()
+        csrf_schema.children = csrf_schema.children + mcq_schema.children
+        return csrf_schema
 
     def report(self, answer):
         choices = [self.choice_one, self.choice_two, self.choice_three, self.choice_four]

@@ -1,9 +1,9 @@
+from pyramid.httpexceptions import HTTPFound
+from pyramid.response import Response
 from pyramid.view import(
     view_config,
     view_defaults
 )
-from pyramid.httpexceptions import HTTPFound
-from pyramid.response import Response
 
 import colander
 from deform.form import Form
@@ -65,17 +65,11 @@ class TopicViews:
     def __init__(self, request):
         self.request = request
 
-    @view_config(route_name='delete_topic', decorator=(requires_logged_in, requires_topic_owner))
-    def delete_topic(self):
-        print(self.request.topic)
-        self.request.db.delete(self.request.topic)
-        self.request.db.commit()
-        return HTTPFound(self.request.referrer)
 
     #TODO This needs to be made simpler, it's only one text box.
     @view_config(route_name='edit_topic', renderer='templates/topic_edit.pt', request_method='GET', decorator=(requires_logged_in, requires_topic_owner))
     def edit_topic_get(self):
-        edit_form = Form(self.request.topic.edit_schema(), buttons=('save',))
+        edit_form = Form(self.request.topic.edit_schema().bind(request=self.request), buttons=('save',))
         return {
             'page_title': 'Edit Topic',
             'edit_form': edit_form.render(self.request.topic.__dict__)
@@ -86,7 +80,7 @@ class TopicViews:
         if 'save' in self.request.POST:
             template_vars = {'page_title': 'Edit Topic'}
             try:
-                edit_form = Form(self.request.topic.edit_schema(), buttons=('save',))
+                edit_form = Form(self.request.topic.edit_schema().bind(request=self.request), buttons=('save',))
                 appstruct = edit_form.validate(self.request.POST.items())
                 self.request.topic.edit(appstruct, self.request.db)
                 return HTTPFound(self.request.route_url('profile'))
@@ -100,6 +94,19 @@ class TopicViews:
             return HTTPFound(self.request.route_url('profile'))
 
         return template_vars
+
+    @view_config(route_name='delete_topic', decorator=(requires_logged_in, requires_topic_owner))
+    def delete_topic(self):
+        try:
+            csrf_token = self.request.POST['csrf_token']
+            if not csrf_token == self.request.session.get_csrf_token():
+                return HTTPClientError()
+        except KeyError as _:
+            return HTTPClientError()
+        self.request.db.delete(self.request.topic)
+        self.request.db.commit()
+        return HTTPFound(self.request.referrer)
+
 class QuestionSetViews:
     def __init__(self,request):
         self.request = request
@@ -108,7 +115,8 @@ class QuestionSetViews:
     def view_set(self):
         questions = QuestionSet.get_questions(self.request.question_set.id, self.request.db)
         return {
-            'page_title': "Viewing Question Set",
+            'csrf_token': self.request.session.new_csrf_token(),
+            'page_title': 'Viewing Question Set',
             'question_set_description': self.request.question_set.description,
             'question_set_id': self.request.question_set.id,
             'questions': questions,
@@ -117,7 +125,7 @@ class QuestionSetViews:
     #TODO This needs to be made simpler, it's only one text box.
     @view_config(route_name='edit_question_set', renderer='templates/question_set_edit.pt', request_method='GET', decorator=(requires_logged_in, requires_question_set_contributor))
     def edit_set_get(self):
-        edit_form = Form(self.request.question_set.edit_schema(), buttons=('save',))
+        edit_form = Form(self.request.question_set.edit_schema().bind(request=self.request), buttons=('save',))
         return {
             'page_title': 'Edit Question Set',
             'edit_form': edit_form.render(self.request.question_set.__dict__)
@@ -128,7 +136,7 @@ class QuestionSetViews:
         if 'save' in self.request.POST:
             template_vars = {'page_title': 'Edit Question Set'}
             try:
-                edit_form = Form(self.request.question_set.edit_schema(), buttons=('save',))
+                edit_form = Form(self.request.question_set.edit_schema().bind(request=self.request), buttons=('save',))
                 appstruct = edit_form.validate(self.request.POST.items())
                 self.request.question_set.edit(appstruct, self.request.db)
                 return HTTPFound(self.request.route_url('profile'))
@@ -143,10 +151,14 @@ class QuestionSetViews:
 
         return template_vars
 
-
-
     @view_config(route_name='delete_question_set', decorator=(requires_logged_in, requires_question_set_contributor))
     def delete_set(self):
+        try:
+            csrf_token = self.request.POST['csrf_token']
+            if not csrf_token == self.request.session.get_csrf_token():
+                return HTTPClientError()
+        except KeyError as _:
+            return HTTPClientError()
         self.request.db.delete(self.request.question_set)
         self.request.db.commit()
         return HTTPFound(self.request.referrer)
@@ -181,17 +193,17 @@ class QuestionViews:
 
     @view_config(route_name='edit_question', renderer='templates/question_edit.pt', request_method='GET', decorator=(requires_logged_in, requires_question_contributor))
     def edit_question_get(self):
-        edit_form = Form(self.request.question.edit_schema(), buttons=('save',))
+        edit_form = Form(self.request.question.edit_schema().bind(request=self.request), buttons=('save',))
         return {
             'page_title': 'Edit Question',
-            'edit_form': edit_form.render(self.request.question.__dict__)
+            'edit_form': edit_form.render(self.request.question.__dict__),
         }
 
     @view_config(route_name='edit_question', renderer='templates/question_edit.pt', request_method='POST', decorator=(requires_logged_in, requires_question_contributor))
     def edit_question_post(self):
         template_vars = {'page_title': 'Edit Question'}
         if 'save' in self.request.POST:
-            edit_form = Form(self.request.question.edit_schema(), buttons=('save',))
+            edit_form = Form(self.request.question.edit_schema().bind(request=self.request), buttons=('save',))
             try:
                 appstruct = edit_form.validate(self.request.POST.items())
                 self.request.question.edit(appstruct, self.request.db)
@@ -210,6 +222,12 @@ class QuestionViews:
 
     @view_config(route_name='delete_question', decorator=(requires_logged_in, requires_question_contributor))
     def delete_question(self):
+        try:
+            csrf_token = self.request.POST['csrf_token']
+            if not csrf_token == self.request.session.get_csrf_token():
+                return HTTPClientError()
+        except KeyError as _:
+            return HTTPClientError()
         self.request.db.delete(self.request.question)
         self.request.db.commit()
         return HTTPFound(self.request.referrer)
@@ -281,6 +299,7 @@ class UserViews:
     def profile_vars(self):
         user = User.get_user(Session.user_id(self.request.session),self.request.db)
         template_vars = {
+            'csrf_token': self.request.session.get_csrf_token(),
             'page_title':'Profile',
             'user':user,
         }
@@ -382,9 +401,6 @@ class UserViews:
 
     @view_config(route_name='profile', renderer='templates/profile.pt', request_method='GET', decorator=(requires_logged_in,))
     def profile_get(self):
-        if not Session.logged_in(self.request.session):
-            return HTTPFound(self.request.route_url('login'))
-
         template_vars, add_topic_form, add_question_set_form = self.profile_vars()
         template_vars['add_topic_form'] = add_topic_form.render()
         if add_question_set_form:

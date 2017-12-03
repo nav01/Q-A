@@ -56,7 +56,10 @@
                     <p tal:content="topic.title"/>
                 </a>
                 <a href="/topic/${topic.id}/edit" role="button" class="btn btn-primary btn-sm">Edit Title</a>
-                <a href="/topic/${topic.id}/delete" role="button" class="btn btn-primary btn-sm">Delete Topic</a>
+                <form action="/topic/${topic.id}/delete" method="POST">
+                    <input type="hidden" name="csrf_token" value=${csrf_token}>
+                    <input type="submit" value="Delete" class="btn btn-primary btn-sm">
+                </form>
                 <div class="list-group collapse" id="topic-${repeat['topic'].index}" tal:condition="exists: topic.question_sets">
                     <a class="list-group-item" tal:repeat="question_set topic.question_sets">
                         <p tal:content="question_set.description"/>
@@ -65,7 +68,10 @@
                         <a href="/set/${question_set.id}/answer" role="button" class="btn btn-primary btn-sm">Answer Set</a>
                         <a href="/set/${question_set.id}/view" role="button" class="btn btn-primary btn-sm">View Questions</a>
                         <a href="/set/${question_set.id}/edit" role="button" class="btn btn-primary btn-sm">Edit Description</a>
-                        <a href="/set/${question_set.id}/delete" role="button" class="btn btn-primary btn-sm">Delete Set</a>
+                        <form action="/set/${question_set.id}/delete" method="POST">
+                            <input type="hidden" name="csrf_token" value=${csrf_token}>
+                            <input type="submit" value="Delete" class="btn btn-primary btn-sm">
+                        </form>
                     </a>
                 </div>
             </tal:block>

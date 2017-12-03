@@ -12,7 +12,19 @@
             </ul>
         </div>
         <div>
-            ${structure: edit_form}
+            <h1>${question_set_description}</h1>
+            <ol>
+                <tal:block repeat="question questions">
+                    <li>
+                        <p>${question.description}</p>
+                        <a href="/set/${question_set_id}/question/${question.__class__.question_type}/${question.id}/edit" role="button" class="btn btn-primary btn-sm">Edit</a>
+                        <form action="/set/${question_set_id}/question/${question.__class__.question_type}/${question.id}/delete" method='POST'>
+                            <input type="hidden" name="csrf_token" value=${csrf_token}>
+                            <input type="submit" value="Delete" class="btn btn-primary btn-sm">
+                        </form>
+                    </li>
+                </tal:block>
+            </ol>
         </div>
     </div>
 </html>
