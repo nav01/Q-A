@@ -2,6 +2,28 @@
     <head metal:fill-slot="head">
         <tal metal:use-macro="load: ./head.pt"/>
         <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
+        <script src="${request.static_url('qa:javascript/jquery-sortable.js')}"></script>
+        <script src="${request.static_url('qa:javascript/reorder.js')}"></script>
+        <style type="text/css">
+            body.dragging, body.dragging * {
+              cursor: move !important;
+            }
+
+            .dragged {
+              position: absolute;
+              opacity: 0.5;
+              z-index: 2000;
+            }
+
+            ol.sortable li.placeholder {
+              position: relative;
+              /** More li styles **/
+            }
+            ol.sortable li.placeholder:before {
+              position: absolute;
+              /** Define arrowhead **/
+            }
+        </style>
     </head>
     <div class="container" metal:fill-slot="content">
         <div tal:condition="exists: errors" class="alert alert-danger">
@@ -13,18 +35,23 @@
         </div>
         <div>
             <h1>${question_set_description}</h1>
-            <ol>
+            <ol class="sortable" id="question-list">
                 <tal:block repeat="question questions">
-                    <li>
+                    <li id="reorderable-${question.id}">
                         <p>${question.description}</p>
                         <a href="/set/${question_set_id}/question/${question.__class__.question_type}/${question.id}/edit" role="button" class="btn btn-primary btn-sm">Edit</a>
-                        <form action="/set/${question_set_id}/question/${question.__class__.question_type}/${question.id}/delete" method='POST'>
-                            <input type="hidden" name="csrf_token" value=${csrf_token}>
-                            <input type="submit" value="Delete" class="btn btn-primary btn-sm">
-                        </form>
                     </li>
                 </tal:block>
             </ol>
+            <tal:block tal:condition="exists: reorder_form">
+                <div tal:condition="python: reorder_form.error" class="alert alert-danger" role="alert">
+                    <p>${reorder_form.error}</p>
+                </div>
+                <form id="reorder" method="POST">
+                    ${structure: reorder_form.render_fields()}
+                    <input type="submit" class="btn btn-primary btn-sm" name=${reorder_form.button} value=${reorder_form.button}>
+                </form>
+            </tal:block>
         </div>
     </div>
 </html>

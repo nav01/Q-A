@@ -115,7 +115,7 @@ class QuestionSet(Base):
     topic_id = Column(Integer, ForeignKey('topics.id', ondelete='cascade'), nullable=False)
 
     topic = relationship('Topic', back_populates='question_sets')
-    multiple_choice_questions = relationship('MultipleChoiceQuestion', back_populates='question_set', passive_deletes='all')
+    multiple_choice_questions = relationship('MultipleChoiceQuestion', back_populates='question_set', passive_deletes='all', order_by='MultipleChoiceQuestion.question_order')
 
     __table_args__ = (
         UniqueConstraint('topic_id', 'description'),
@@ -162,6 +162,11 @@ class QuestionSet(Base):
         csrf_schema.children = csrf_schema.children + question_set_schema.children
         return csrf_schema
 
+    def reorder(self, new_order, db):
+        order = [{'id':i, 'question_order': index} for index, i in enumerate(new_order)]
+        db.bulk_update_mappings(MultipleChoiceQuestion, order)
+        db.commit()
+
     #Either use each ORM class, or do this using the relationship aspect of sqlalchemy.
     #Currently not sure how to do it the 2nd way without loading unnecessary data.
     #Retrieves a list of questions.
@@ -173,6 +178,9 @@ class QuestionSet(Base):
         if result:
             questions.append(result)
         return list(itertools.chain.from_iterable(questions))
+
+    def get_question_ids(self, db):
+        return db.query(MultipleChoiceQuestion.id).filter(MultipleChoiceQuestion.question_set_id == self.id).all()
 
     #Returns the total number of questions associated with a question set
     def num_questions(question_set_id, db):

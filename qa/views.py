@@ -6,7 +6,7 @@ from pyramid.view import(
 )
 
 import colander
-from deform.form import Form
+from deform.form import Form, Button
 from deform.exception import ValidationFailure
 from . import forms
 from .models import(
@@ -80,6 +80,7 @@ class TopicViews:
         if 'save' in self.request.POST:
             template_vars = {'page_title': 'Edit Topic'}
             try:
+
                 edit_form = Form(self.request.topic.edit_schema().bind(request=self.request), buttons=('save',))
                 appstruct = edit_form.validate(self.request.POST.items())
                 self.request.topic.edit(appstruct, self.request.db)
@@ -113,16 +114,33 @@ class QuestionSetViews:
 
     @view_config(route_name='view_question_set', renderer='templates/question_set.pt', decorator=(requires_logged_in, requires_question_set_contributor))
     def view_set(self):
-        questions = QuestionSet.get_questions(self.request.question_set.id, self.request.db)
-        return {
-            'csrf_token': self.request.session.new_csrf_token(),
+        questions = self.request.question_set.multiple_choice_questions
+        question_ids = [q.id for q in questions]
+
+        template_vars = {
             'page_title': 'Viewing Question Set',
             'question_set_description': self.request.question_set.description,
             'question_set_id': self.request.question_set.id,
             'questions': questions,
         }
 
-    #TODO This needs to be made simpler, it's only one text box.
+        if question_ids:
+            reorder_form = forms.ReorderResourceForm(self.request, question_ids, 'Reorder')
+        if self.request.method == 'GET':
+            if question_ids:
+                template_vars['reorder_form'] = reorder_form
+            return template_vars
+        elif self.request.method == 'POST' and reorder_form.button in self.request.POST and question_ids:
+            try:
+                appstruct = reorder_form.validate(self.request.POST)
+                self.request.question_set.reorder(appstruct, self.request.db)
+                return HTTPFound(self.request.referrer)
+            except ValueError as _:
+                template_vars['reorder_form'] = reorder_form
+                return template_vars
+            return HTTPFound(self.request.route_url('profile'))
+
+
     @view_config(route_name='edit_question_set', renderer='templates/question_set_edit.pt', request_method='GET', decorator=(requires_logged_in, requires_question_set_contributor))
     def edit_set_get(self):
         edit_form = Form(self.request.question_set.edit_schema().bind(request=self.request), buttons=('save',))

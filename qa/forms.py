@@ -4,6 +4,7 @@ import colander
 import deform
 import re
 
+#deform csrf protection
 class CSRFSchema(colander.MappingSchema):
     @colander.deferred
     def __deferred_csrf_default(node, kw):
@@ -26,6 +27,50 @@ class CSRFSchema(colander.MappingSchema):
         validator=__deferred_csrf_validator,
         widget=deform.widget.HiddenWidget(),
     )
+#Both wtforms and deform don't seem to easily support dynamic forms with all hidden inputs which
+#would be used to reorder things like questions, so I just decided to create my own.
+class ReorderResourceForm:
+    input_template = '<input type="hidden" class="reorderable" id="{}" name="{}" value={}>'
+    id_template = 'reorderable_{}'
+    name_template = 'reorderable[{}]'
+    csrf_token = 'csrf_token'
+    form_validation_failure_message = 'An unknown issue occurred. Try again.'
+
+    def __init__(self, request, ids, button_name='Submit'):
+        if not ids:
+            raise ValueError('Empty id list.')
+        self.csrf_token = request.session.get_csrf_token()
+        self.ids = ids
+        self.error = None
+        self.button = button_name
+
+    def _set_and_return_error(self):
+        self.error = self.__class__.form_validation_failure_message
+        return ValueError(self.error)
+
+    def render_fields(self):
+        x = self.__class__
+        input_fields = [x.input_template.format(x.id_template.format(index), x.name_template.format(index), resource_id) for index, resource_id in enumerate(self.ids)]
+        input_fields.append('<input type="hidden" name="{}" value="{}">'.format(self.__class__.csrf_token, self.csrf_token))
+        return ''.join(input_fields)
+
+    def validate(self, post):
+        if post.get(self.__class__.csrf_token) != self.csrf_token:
+            raise self._set_and_return_error()
+        submitted_ids = []
+        try:
+            index = 0
+            while True:
+                submitted_ids.append(int(post[self.__class__.name_template.format(index)]))
+                index += 1
+        except KeyError as _:
+            pass
+        except ValueError as _:
+            raise self._set_and_return_error()
+        if set(submitted_ids) != set(self.ids):
+            raise self._set_and_return_error()
+        return submitted_ids
+
 
 class Topic(colander.Schema):
     __MAX_TOPIC_LENGTH = 50

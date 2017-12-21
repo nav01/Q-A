@@ -13,7 +13,7 @@ def main(global_config, **settings):
     config.add_static_view('static_deform', 'deform:static')
 
     sqlalchemy_engine = engine_from_config(settings, prefix='sqlalchemy.')
-    #Base.metadata.drop_all(sqlalchemy_engine)
+    # Base.metadata.drop_all(sqlalchemy_engine)
     Base.metadata.create_all(sqlalchemy_engine)
     Session = sessionmaker(bind=sqlalchemy_engine)
 
