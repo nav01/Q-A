@@ -1,4 +1,4 @@
-from pyramid.httpexceptions import HTTPFound
+from pyramid.httpexceptions import HTTPFound, HTTPClientError
 from pyramid.response import Response
 from pyramid.view import(
     view_config,
@@ -11,6 +11,7 @@ from deform.exception import ValidationFailure
 from . import forms
 from .models import(
     MultipleChoiceQuestion as MCQ,
+    Question,
     QuestionSet,
     Topic,
     User,
@@ -27,7 +28,6 @@ from .security import(
 class QuestionSetState:
     def __init__(self, questions, question_set_id):
         if questions:
-            questions.sort(key=lambda question: question.question_order)
             self.question_set_id = question_set_id
             self.question_list = questions
             self.answers = []
@@ -114,7 +114,7 @@ class QuestionSetViews:
 
     @view_config(route_name='view_question_set', renderer='templates/question_set.pt', decorator=(requires_logged_in, requires_question_set_contributor))
     def view_set(self):
-        questions = self.request.question_set.multiple_choice_questions
+        questions = self.request.question_set.questions
         question_ids = [q.id for q in questions]
 
         template_vars = {
@@ -185,6 +185,9 @@ class QuestionViews:
     def __init__(self,request):
         self.request = request
 
+    def __init__(self,request):
+        self.request = request
+
     @view_config(route_name='create_question', renderer='templates/question_creation.pt', decorator=(requires_logged_in, requires_question_set_contributor))
     def create_question(self):
         template_vars = {'page_title':'Create Question'}
@@ -252,13 +255,13 @@ class QuestionViews:
 
     #Sets up the list of questions for the user to answer and presents the first question.
     #There is no progress saved and if the page is refreshed the user has to start again.
-    @view_config(route_name='answer_question_set', renderer='templates/answer.pt', request_method='GET',decorator=(requires_logged_in, requires_question_set_contributor))
+    @view_config(route_name='answer_question_set', renderer='templates/answer.pt', request_method='GET', decorator=(requires_logged_in, requires_question_set_contributor))
     def setup(self):
-        question_set_id = self.request.matchdict['question_set_id']
-        question_set = QuestionSet.get_questions(question_set_id, self.request.db)
+        question_set_id = self.request.question_set.id
+        question_set = self.request.question_set.questions
         try:
             template_vars = {'page_title':'Answer'} #Need better title.
-            self.request.session[Session.QUESTION_STATE] = QuestionSetState(question_set,question_set_id)
+            self.request.session[Session.QUESTION_STATE] = QuestionSetState(question_set, question_set_id)
             question = self.request.session[Session.QUESTION_STATE].get_current_question()
             schema = question.form_schema(self.request)
             question_form = Form(schema, buttons=('submit',))
@@ -268,7 +271,7 @@ class QuestionViews:
             self.request.session.flash(str(e))
             return HTTPFound(self.request.route_url('profile'))
 
-    @view_config(route_name='answer_question_set', renderer='templates/answer.pt', request_method='POST',decorator=(requires_logged_in, requires_question_set_contributor))
+    @view_config(route_name='answer_question_set', renderer='templates/answer.pt', request_method='POST', decorator=(requires_logged_in, requires_question_set_contributor))
     def answer(self):
         if 'submit' in self.request.POST and Session.QUESTION_STATE in self.request.session:
             template_vars = {'page_title':'Answer'}

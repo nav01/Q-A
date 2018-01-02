@@ -75,12 +75,11 @@ def requires_question_contributor(wrapped):
         user_id = Session.user_id(request.session)
         try:
             set_id = request.matchdict['question_set_id']
-            q_type = request.matchdict['type']
             q_id = request.matchdict['question_id']
         except KeyError as _:
             raise HTTPForbidden()
 
-        question = Question.user_is_contributor(user_id, set_id, q_type, q_id, request.db)
+        question = Question.user_is_contributor(user_id, set_id, q_id, request.db)
         if question:
             request.question = question
             return wrapped(context, request)

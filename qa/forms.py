@@ -71,7 +71,6 @@ class ReorderResourceForm:
             raise self._set_and_return_error()
         return submitted_ids
 
-
 class Topic(colander.Schema):
     __MAX_TOPIC_LENGTH = 50
     title = colander.SchemaNode(
@@ -128,6 +127,12 @@ class QuestionSetsSchema(CSRFSchema):
         widget=deform.widget.SequenceWidget(orderable=True)
     )
 
+def get_question_form(q_type):
+    if q_type == models.QuestionType.mcq.name:
+        return MultipleChoiceSchema()
+    else:
+        raise ValueError('Wat do?')
+
 class MultipleChoiceQuestion(colander.Schema):
     __MAX_ANSWER_lENGTH = 50
 
@@ -170,12 +175,20 @@ class MultipleChoiceQuestion(colander.Schema):
         title="Choose the correct answer",
     )
 class MultipleChoiceQuestions(colander.SequenceSchema):
-    question = MultipleChoiceQuestion()
+    multiple_choice_question = MultipleChoiceQuestion()
 class MultipleChoiceSchema(CSRFSchema):
-    questions = MultipleChoiceQuestions(
+    multiple_choice_questions = MultipleChoiceQuestions(
         name=models.MultipleChoiceQuestion.__table__.name,
         widget=deform.widget.SequenceWidget(orderable=True)
     )
+    question_type = colander.SchemaNode(
+        colander.String(),
+        name=models.Question.type.name,
+        default=models.QuestionType.mcq.name,
+        validator = colander.OneOf([models.QuestionType.mcq.name]),
+        widget=deform.widget.HiddenWidget(),
+    )
+
 class MultipleChoiceAnswer(CSRFSchema):
     def prepare_choices(question):
         choices = []

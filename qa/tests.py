@@ -153,6 +153,8 @@ class QuestionViewTests(DbTestCase):
     def setUp(self):
         from .models import User, Topic, QuestionSet, MultipleChoiceQuestion as MCQ
         from .views import Session
+        from .models import Question
+        from .models import QuestionType
 
         self.config = testing.setUp()
         self.config.add_route('report','/report')
@@ -164,6 +166,7 @@ class QuestionViewTests(DbTestCase):
         self.user = User(id=1, username='user', password='pass')
         self.topic = Topic(id=1,title='Test',user_id=1)
         self.question_set = QuestionSet(id=1,description='Test_Set',topic_id=1)
+        self.request.question_set = self.question_set
         self.question = MCQ(
             id=1,
             question_order=1,
@@ -174,6 +177,7 @@ class QuestionViewTests(DbTestCase):
             choice_four='d',
             correct_answer=0,
             question_set_id=1,
+            type=QuestionType.mcq,
 
         )
         self.question2 = MCQ(
@@ -186,6 +190,7 @@ class QuestionViewTests(DbTestCase):
             choice_four='d',
             correct_answer=1,
             question_set_id=1,
+            type=QuestionType.mcq,
 
         )
         self.db.add_all([self.user,self.topic,self.question_set,self.question,self.question2])
@@ -460,6 +465,26 @@ class QuestionSetTests(DbTestCase):
 
         self.assertRaises(ValueError, question_set.edit, values, self.db)
 
+    def test_reorder(self):
+        from .models import QuestionSet
+        from .models import Question
+        from .models import QuestionType
+
+        values = {'topic_id':self.topic.id, 'description':'Question Set'}
+        question_set = QuestionSet(**values)
+        self.db.add(question_set)
+        self.db.commit()
+        question1 = Question(id=1, question_set_id=question_set.id, description='test1', question_order=0, type=QuestionType.question)
+        question2 = Question(id=2, question_set_id=question_set.id, description='test2', question_order=1, type=QuestionType.question)
+        self.db.add_all([question1,question2])
+        self.db.commit()
+        try:
+            question_set.reorder([2,1], self.db)
+        except Exception as e:
+            self.fail('Unique constraint unique_order_per_set was not deferred.')
+        self.assertTrue(question1.question_order == 1 and question2.question_order == 0)
+
+
 class MultipleChoiceQuestionTests(DbTestCase):
     def __init__(self, *args, **kwargs):
         DbTestCase.__init__(self, *args, **kwargs)
@@ -492,6 +517,7 @@ class MultipleChoiceQuestionTests(DbTestCase):
             'correct_answer':1,
         }
         self.values = {
+            'type': 'mcq',
             'multiple_choice_questions': [self.mcq]
         }
 
@@ -547,6 +573,7 @@ class MultipleChoiceQuestionTests(DbTestCase):
         from .models import MultipleChoiceQuestion as MCQ
 
         self.mcq['question_set_id'] = self.question_set.id
+        self.mcq['question_order'] = 1
         question = MCQ(**self.mcq)
         self.db.add(question)
         self.db.commit()
@@ -560,8 +587,10 @@ class MultipleChoiceQuestionTests(DbTestCase):
         from .models import MultipleChoiceQuestion as MCQ
 
         self.mcq['question_set_id'] = self.question_set.id
+        self.mcq['question_order'] = 1
         question = MCQ(**self.mcq)
         self.mcq['description'] = '_' + self.mcq['description']
+        self.mcq['question_order'] = 2
         question2 = MCQ(**self.mcq)
         self.db.add_all([question,question2])
         self.db.commit()
@@ -572,6 +601,7 @@ class MultipleChoiceQuestionTests(DbTestCase):
         from .models import MultipleChoiceQuestion as MCQ
 
         self.mcq['question_set_id'] = self.question_set.id
+        self.mcq['question_order'] = 1
         question = MCQ(**self.mcq)
         self.db.add(question)
         self.db.commit()
@@ -583,6 +613,7 @@ class MultipleChoiceQuestionTests(DbTestCase):
         from .models import MultipleChoiceQuestion as MCQ
 
         self.mcq['question_set_id'] = self.question_set.id
+        self.mcq['question_order'] = 1
         new_mcq = MCQ(**self.mcq)
         self.db.add(new_mcq)
         self.db.commit()
@@ -715,6 +746,7 @@ class AuthorizationTests(DbTestCase):
         self.question_set = QuestionSet(id=set_id, description='Desc', topic_id=topic_id)
         self.mcq = MCQ(**{
             'id':question_id,
+            'question_order':1,
             'question_set_id':set_id,
             'description':'Sample',
             'choice_one':'One',

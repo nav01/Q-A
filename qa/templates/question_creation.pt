@@ -1,8 +1,9 @@
 <html metal:use-macro="load: ./main.pt">
     <head metal:fill-slot="head">
         <tal metal:use-macro ="load: ./head.pt"/>
-        <script src="${request.static_url('qa:javascript/question_generation.js')}"></script>
+        <script src="${request.static_url('qa:javascript/question_form_generation.js')}"></script>
         <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
+        <script src="${request.static_url('qa:javascript/jquery-sortable.js')}"></script>
     </head>
     <div class="container" metal:fill-slot="content">
         <select id="question-controller">

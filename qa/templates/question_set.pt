@@ -39,7 +39,7 @@
                 <tal:block repeat="question questions">
                     <li id="reorderable-${question.id}">
                         <p>${question.description}</p>
-                        <a href="/set/${question_set_id}/question/${question.__class__.question_type}/${question.id}/edit" role="button" class="btn btn-primary btn-sm">Edit</a>
+                        <a href="/set/${question_set_id}/question/${question.id}/edit" role="button" class="btn btn-primary btn-sm">Edit</a>
                     </li>
                 </tal:block>
             </ol>

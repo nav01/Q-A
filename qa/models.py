@@ -1,15 +1,18 @@
 import itertools
+import enum
 
 from passlib.hash import pbkdf2_sha256
 from psycopg2 import errorcodes
 from sqlalchemy import (
-    Column, Integer, String, ForeignKey,
+    Column, Integer, String, Enum, ForeignKey,
     event,
     CheckConstraint, UniqueConstraint,
+    func,
 )
+from sqlalchemy.sql import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, load_only
+from sqlalchemy.orm import relationship, with_polymorphic
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.schema import DDL
 
@@ -115,7 +118,7 @@ class QuestionSet(Base):
     topic_id = Column(Integer, ForeignKey('topics.id', ondelete='cascade'), nullable=False)
 
     topic = relationship('Topic', back_populates='question_sets')
-    multiple_choice_questions = relationship('MultipleChoiceQuestion', back_populates='question_set', passive_deletes='all', order_by='MultipleChoiceQuestion.question_order')
+    questions = relationship('Question', back_populates='question_set', passive_deletes='all', order_by='Question.question_order')
 
     __table_args__ = (
         UniqueConstraint('topic_id', 'description'),
@@ -164,7 +167,8 @@ class QuestionSet(Base):
 
     def reorder(self, new_order, db):
         order = [{'id':i, 'question_order': index} for index, i in enumerate(new_order)]
-        db.bulk_update_mappings(MultipleChoiceQuestion, order)
+        db.execute('SET CONSTRAINTS unique_order_per_set DEFERRED;')
+        db.bulk_update_mappings(Question, order)
         db.commit()
 
     #Either use each ORM class, or do this using the relationship aspect of sqlalchemy.
@@ -184,14 +188,30 @@ class QuestionSet(Base):
 
     #Returns the total number of questions associated with a question set
     def num_questions(question_set_id, db):
-        question_set = db.query(QuestionSet).filter(QuestionSet.id == question_set_id).first()
-        return len(question_set.multiple_choice_questions)
+        return db.query(func.count(Question.id)).filter(Question.question_set_id == question_set_id).scalar()
 
-class Question:
-    question_order = Column(Integer)
-    description = Column(String,nullable=False)
+class QuestionType(enum.Enum):
+    question = 1
+    mcq = 2
 
-    question_type = None
+class Question(Base):
+    __tablename__ = 'questions'
+    id = Column(Integer, primary_key=True)
+    type = Column(Enum(QuestionType), nullable=False)
+    description = Column(String, nullable=False)
+    question_order = Column(Integer, nullable=False)
+    question_set_id = Column(Integer, ForeignKey('question_sets.id', ondelete='cascade'), nullable=False)
+
+    question_set = relationship('QuestionSet', back_populates='questions')
+
+    __table_args__ = (
+        UniqueConstraint('question_set_id', 'description'),
+        UniqueConstraint('question_set_id', 'question_order', name='unique_order_per_set', deferrable=True)
+    )
+    __mapper_args__ = {
+        'polymorphic_identity': QuestionType.question,
+        'polymorphic_on': type,
+    }
 
     #Derived classes should override and implement the following methods.
     def form_schema(self, **kwargs):
@@ -203,49 +223,55 @@ class Question:
     def report(self):
         pass
 
-    def user_is_contributor(user_id, question_set_id, question_type, question_id, db):
-        if question_type == 'mcq':
-            return MultipleChoiceQuestion.user_is_contributor(user_id, question_set_id, question_id, db)
-        else:
+    def create(question_set_id, values, db):
+        try:
+            q_type = values[Question.type.name]
+            if q_type == QuestionType.mcq.name:
+                MultipleChoiceQuestion.create(question_set_id, values, db)
+        except Exception as e:
+            raise e
+
+    def user_is_contributor(user_id, question_set_id, question_id, db):
+        try:
+            question_plus_type = with_polymorphic(Question, [MultipleChoiceQuestion])
+            question = db.query(question_plus_type).\
+                join(QuestionSet).\
+                join(Topic).\
+                join(User).\
+                filter(Question.id == question_id, QuestionSet.id == question_set_id, User.id == user_id).one()
+            return question
+        except NoResultFound as _:
             return False
 
-class MultipleChoiceQuestion(Base, Question):
+class MultipleChoiceQuestion(Question):
     __tablename__='multiple_choice_questions'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, ForeignKey('questions.id', ondelete='cascade'), primary_key=True)
     choice_one = Column(String(50), nullable=False)
     choice_two = Column(String(50), nullable=False)
     choice_three = Column(String(50), nullable=False)
     choice_four = Column(String(50), nullable=False)
     correct_answer = Column(Integer, nullable=False)
-    question_set_id = Column(Integer, ForeignKey('question_sets.id', ondelete='cascade'), nullable=False)
-
-    question_set = relationship('QuestionSet', back_populates='multiple_choice_questions')
 
     __table_args__ = (
-        UniqueConstraint('question_set_id', 'description'),
-        CheckConstraint(correct_answer >= 0),
-        CheckConstraint(correct_answer <= 3),
+        CheckConstraint('choice_one NOT IN (choice_two, choice_three, choice_four)'),
+        CheckConstraint('choice_two NOT IN (choice_one, choice_three, choice_four)'),
+        CheckConstraint('choice_three NOT IN (choice_one, choice_two, choice_four)'),
+        CheckConstraint('choice_four NOT IN (choice_one, choice_two, choice_three)'),
+        CheckConstraint('correct_answer >= 0'),
+        CheckConstraint('correct_answer <= 3'),
     )
+    __mapper_args__ = {
+        'polymorphic_identity': QuestionType.mcq,
+    }
 
-    question_type = 'mcq'
-
-    def user_is_contributor(user_id, question_set_id, question_id, db):
+    @classmethod
+    def create(cls, question_set_id, values, db):
         try:
-            mcq = db.query(MultipleChoiceQuestion).\
-                join(QuestionSet).\
-                join(Topic).\
-                join(User).\
-                filter(MultipleChoiceQuestion.id == question_id, QuestionSet.id == question_set_id, User.id == user_id).one()
-            return mcq
-        except NoResultFound as _:
-            return False
-
-    def create(question_set_id, values, db):
-        try:
+            enum_type = getattr(QuestionType, values[Question.type.name])
             order = QuestionSet.num_questions(question_set_id,db) + 1
-            new_multiple_choice_questions = [MultipleChoiceQuestion(question_set_id=question_set_id, question_order = order + i, **value)
-                for i,value in enumerate(values[MultipleChoiceQuestion.__table__.name])]
+            new_multiple_choice_questions = [cls(question_set_id=question_set_id, question_order = order + i, type=enum_type, **value)
+                for i,value in enumerate(values[cls.__table__.name])]
             db.add_all(new_multiple_choice_questions)
             db.commit()
         except IntegrityError as e:
