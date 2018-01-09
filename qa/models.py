@@ -1,4 +1,3 @@
-import itertools
 import enum
 
 from passlib.hash import pbkdf2_sha256
@@ -9,12 +8,10 @@ from sqlalchemy import (
     CheckConstraint, UniqueConstraint,
     func,
 )
-from sqlalchemy.sql import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, with_polymorphic
 from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy.schema import DDL
 
 #There are imports at the method level of classes that have corresponding forms.
 #This is to resolve an issue with cyclic imports between the forms and models modules.
@@ -171,24 +168,16 @@ class QuestionSet(Base):
         db.bulk_update_mappings(Question, order)
         db.commit()
 
-    #Either use each ORM class, or do this using the relationship aspect of sqlalchemy.
-    #Currently not sure how to do it the 2nd way without loading unnecessary data.
-    #Retrieves a list of questions.
-    def get_questions(question_set_id, db):
-        questions = []
-        #Multiple Choice Question
-        query_filter = MultipleChoiceQuestion.question_set_id == question_set_id
-        result = db.query(MultipleChoiceQuestion).filter(query_filter).all()
-        if result:
-            questions.append(result)
-        return list(itertools.chain.from_iterable(questions))
+    def get_questions(self, db):
+        question_plus_type = with_polymorphic(Question, [MultipleChoiceQuestion])
+        questions = db.query(question_plus_type).\
+            join(QuestionSet).\
+            filter(Question.question_set_id == self.id).\
+            order_by(question_plus_type.question_order).all()
+        return questions
 
-    def get_question_ids(self, db):
-        return db.query(MultipleChoiceQuestion.id).filter(MultipleChoiceQuestion.question_set_id == self.id).all()
-
-    #Returns the total number of questions associated with a question set
-    def num_questions(question_set_id, db):
-        return db.query(func.count(Question.id)).filter(Question.question_set_id == question_set_id).scalar()
+    def last_question_order(question_set_id, db):
+        return db.query(func.coalesce(func.max(Question.question_order), -1)).filter(Question.question_set_id == question_set_id).scalar()
 
 class QuestionType(enum.Enum):
     question = 1
@@ -269,8 +258,8 @@ class MultipleChoiceQuestion(Question):
     def create(cls, question_set_id, values, db):
         try:
             enum_type = getattr(QuestionType, values[Question.type.name])
-            order = QuestionSet.num_questions(question_set_id,db) + 1
-            new_multiple_choice_questions = [cls(question_set_id=question_set_id, question_order = order + i, type=enum_type, **value)
+            order_start = QuestionSet.last_question_order(question_set_id,db) + 1
+            new_multiple_choice_questions = [cls(question_set_id=question_set_id, question_order = order_start + i, type=enum_type, **value)
                 for i,value in enumerate(values[cls.__table__.name])]
             db.add_all(new_multiple_choice_questions)
             db.commit()

@@ -15,7 +15,7 @@ function hideAddForm(a,b,c){
     divShowAdd.style.display = 'block';
 }
 
-window.onload = function(){
+function setHideAndShowEvents(){
     var buttonShowAddTopicsForm = document.getElementById('button-show-add-topics-form');
     var buttonHideAddTopicsForm = document.getElementById('button-hide-add-topics-form');
     //If No topics exist, these buttons are undefined.
@@ -30,20 +30,27 @@ window.onload = function(){
         'click',
         (function(a,b,c){return function(){hideAddForm(a,b,c);}})('div-add-topics-form','div-show-add-topics','div-hide-add-topics'));
 
-    //If No topics exist, these buttons are undefined.  Do we leave as is or surround in an 'if'?
-    buttonShowAddQuestionSetForm.addEventListener(
-        'click',
-        (function(a,b,c){return function(){showAddForm(a,b,c);}})('div-add-question-set-form','div-show-add-question-set','div-hide-add-question-set'));
+    //Only need to add these if topics exist.
+    if(buttonShowAddQuestionSetForm){
+        buttonShowAddQuestionSetForm.addEventListener(
+            'click',
+            (function(a,b,c){return function(){showAddForm(a,b,c);}})('div-add-question-set-form','div-show-add-question-set','div-hide-add-question-set'));
 
-    buttonHideAddQuestionSetForm.addEventListener(
-        'click',
-        (function(a,b,c){return function(){hideAddForm(a,b,c);}})('div-add-question-set-form','div-show-add-question-set','div-hide-add-question-set'));
+        buttonHideAddQuestionSetForm.addEventListener(
+            'click',
+            (function(a,b,c){return function(){hideAddForm(a,b,c);}})('div-add-question-set-form','div-show-add-question-set','div-hide-add-question-set'));
+    }
+}
 
-    $(function() {
-        $('.list-group-item').on('click', function() {
-            $('.glyphicon', this)
-              .toggleClass('glyphicon-chevron-right')
-              .toggleClass('glyphicon-chevron-down');
-            });
+function collapsibleListHandler(){
+    $('.list-group-item').on('click', function() {
+        $('.glyphicon', this)
+          .toggleClass('glyphicon-chevron-right')
+          .toggleClass('glyphicon-chevron-down');
     });
 }
+
+$(document).ready(function(){
+    setHideAndShowEvents();
+    collapsibleListHandler();
+});

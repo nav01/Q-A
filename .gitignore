@@ -1,3 +1,5 @@
+.cache/
+qa/test.py
 venv/
 build/
 dist/

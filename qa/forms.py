@@ -34,19 +34,13 @@ class ReorderResourceForm:
     id_template = 'reorderable_{}'
     name_template = 'reorderable[{}]'
     csrf_token = 'csrf_token'
-    form_validation_failure_message = 'An unknown issue occurred. Try again.'
 
     def __init__(self, request, ids, button_name='Submit'):
         if not ids:
             raise ValueError('Empty id list.')
         self.csrf_token = request.session.get_csrf_token()
         self.ids = ids
-        self.error = None
         self.button = button_name
-
-    def _set_and_return_error(self):
-        self.error = self.__class__.form_validation_failure_message
-        return ValueError(self.error)
 
     def render_fields(self):
         x = self.__class__
@@ -56,7 +50,7 @@ class ReorderResourceForm:
 
     def validate(self, post):
         if post.get(self.__class__.csrf_token) != self.csrf_token:
-            raise self._set_and_return_error()
+            raise ValueError()
         submitted_ids = []
         try:
             index = 0
@@ -66,9 +60,9 @@ class ReorderResourceForm:
         except KeyError as _:
             pass
         except ValueError as _:
-            raise self._set_and_return_error()
+            raise ValueError()
         if set(submitted_ids) != set(self.ids):
-            raise self._set_and_return_error()
+            raise ValueError()
         return submitted_ids
 
 class Topic(colander.Schema):

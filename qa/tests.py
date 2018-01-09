@@ -465,6 +465,31 @@ class QuestionSetTests(DbTestCase):
 
         self.assertRaises(ValueError, question_set.edit, values, self.db)
 
+    def test_get_questions(self):
+        from .models import Question
+        from .models import QuestionType
+        from .models import QuestionSet
+
+        values = {'topic_id':self.topic.id, 'description':'Question Set'}
+        question_set = QuestionSet(**values)
+        self.db.add(question_set)
+        self.db.commit()
+        #Check empty case
+        self.assertEqual([], question_set.get_questions(self.db))
+
+        #Make sure order_by question_order is present and working properly.
+        question1 = Question(id=1, question_set_id=question_set.id, description='test1', question_order=1, type=QuestionType.question)
+        question3 = Question(id=2, question_set_id=question_set.id, description='test2', question_order=9, type=QuestionType.question)
+        question5 = Question(id=3, question_set_id=question_set.id, description='test3', question_order=11, type=QuestionType.question)
+        question2 = Question(id=4, question_set_id=question_set.id, description='test4', question_order=4, type=QuestionType.question)
+        question4 = Question(id=5, question_set_id=question_set.id, description='test5', question_order=10, type=QuestionType.question)
+
+        self.db.add_all([question1, question3, question5, question2, question4])
+        self.db.commit()
+        ordered_questions = [question1,question2,question3,question4,question5]
+        self.assertEqual(ordered_questions, question_set.get_questions(self.db))
+
+
     def test_reorder(self):
         from .models import QuestionSet
         from .models import Question
@@ -484,6 +509,22 @@ class QuestionSetTests(DbTestCase):
             self.fail('Unique constraint unique_order_per_set was not deferred.')
         self.assertTrue(question1.question_order == 1 and question2.question_order == 0)
 
+    def test_last_question_order(self):
+        from .models import QuestionSet
+        from .models import Question
+        from .models import QuestionType
+
+        values = {'topic_id':self.topic.id, 'description':'Question Set'}
+        question_set = QuestionSet(**values)
+        self.db.add(question_set)
+        self.db.commit()
+        #test default value if no quetsions in set
+        self.assertEqual(-1, QuestionSet.last_question_order(question_set.id, self.db))
+
+        question1 = Question(id=1, question_set_id=question_set.id, description='test1', question_order=0, type=QuestionType.question)
+        self.db.add(question1)
+        self.db.commit()
+        self.assertEqual(0, QuestionSet.last_question_order(question_set.id, self.db))
 
 class MultipleChoiceQuestionTests(DbTestCase):
     def __init__(self, *args, **kwargs):

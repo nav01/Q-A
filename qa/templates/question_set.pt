@@ -3,6 +3,7 @@
         <tal metal:use-macro="load: ./head.pt"/>
         <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
         <script src="${request.static_url('qa:javascript/jquery-sortable.js')}"></script>
+        <script src="${request.static_url('qa:javascript/delete.js')}"></script>
         <script src="${request.static_url('qa:javascript/reorder.js')}"></script>
         <style type="text/css">
             body.dragging, body.dragging * {
@@ -23,6 +24,9 @@
               position: absolute;
               /** Define arrowhead **/
             }
+            .qr-success, .qr-failure {
+                display: none;
+            }
         </style>
     </head>
     <div class="container" metal:fill-slot="content">
@@ -37,21 +41,28 @@
             <h1>${question_set_description}</h1>
             <ol class="sortable" id="question-list">
                 <tal:block repeat="question questions">
-                    <li id="reorderable-${question.id}">
+                    <li class="resource-container" id="reorderable-${question.id}">
                         <p>${question.description}</p>
                         <a href="/set/${question_set_id}/question/${question.id}/edit" role="button" class="btn btn-primary btn-sm">Edit</a>
+                        <form class="delete-form" action="/set/${question_set_id}/question/${question.id}/delete">
+                            <input type="hidden" name="csrf_token" value=${csrf_token}>
+                            <input type="submit" value="Delete" class="btn btn-primary btn-sm">
+                        </form>
                     </li>
                 </tal:block>
             </ol>
             <tal:block tal:condition="exists: reorder_form">
-                <div tal:condition="python: reorder_form.error" class="alert alert-danger" role="alert">
-                    <p>${reorder_form.error}</p>
-                </div>
-                <form id="reorder" method="POST">
+                <form id="reorder" method="POST" action="/set/${question_set_id}/view">
                     ${structure: reorder_form.render_fields()}
                     <input type="submit" class="btn btn-primary btn-sm" name=${reorder_form.button} value=${reorder_form.button}>
                 </form>
             </tal:block>
+        </div>
+        <div class="qr-success alert alert-success" role="alert">
+            <p><strong>Success!</strong> Your questions have been reordered.</p>
+        </div>
+        <div class="qr-failure alert alert-danger" role="alert">
+            <p><strong>Something went wrong.</strong> Refresh the page and try again.</p>
         </div>
     </div>
 </html>

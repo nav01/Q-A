@@ -1,3 +1,8 @@
+/*
+    Used to show the specific question type the user wants to create while
+    hiding others. Desired behavior would be to have the forms load through
+    ajax, but deform's ajax doesn't appear to work.
+*/
 window.onload = function(){
     let visibleForm = undefined;
     function showQuestionForm(){
