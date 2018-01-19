@@ -10,7 +10,6 @@ from deform.form import Form, Button
 from deform.exception import ValidationFailure
 from . import forms
 from .models import(
-    MultipleChoiceQuestion as MCQ,
     Question,
     QuestionSet,
     Topic,
@@ -105,7 +104,6 @@ class TopicViews:
                 template_vars['edit_form'] = e.render()
         else:
             return HTTPFound(self.request.route_url('profile'))
-
         return template_vars
 
     @view_config(route_name='delete_topic', decorator=(requires_logged_in, requires_topic_owner))
@@ -184,28 +182,33 @@ class QuestionViews:
     def __init__(self,request):
         self.request = request
 
+    @view_config(route_name='question_creation_form', request_method='GET')
+    def get_question_creation_form(self):
+        try:
+            schema, _ = forms.get_question_creation_schema(self.request.GET)
+            form = Form(schema.bind(request=self.request), buttons=('create',), action='')
+            return Response(body=form.render())
+        except Exception as _:
+            return HTTPClientError()
+
     @view_config(route_name='create_question', renderer='templates/question_creation.pt', decorator=(requires_logged_in, requires_question_set_contributor))
     def create_question(self):
-        template_vars = {'page_title':'Create Question'}
-        schema = forms.MultipleChoiceSchema().bind(request=self.request)
-        mcq_form = Form(schema, buttons=('create multiple choice question',))
+        question_choices = forms.get_question_select_options()
+        template_vars = {'page_title': 'Create Question', 'question_choices': question_choices}
         if self.request.method == 'POST':
-            if 'create_multiple_choice_question' in self.request.POST:
-                try:
-                    appstruct = mcq_form.validate(self.request.POST.items())
-                    question_set_id = self.request.matchdict['question_set_id']
-                    MCQ.create(question_set_id,appstruct,self.request.db)
-                    return HTTPFound(self.request.route_url('profile'))
-                except ValueError as e:
-                    exc = colander.Invalid(mcq_form.widget, str(e))
-                    mcq_form.widget.handle_error(mcq_form,exc)
-                    template_vars['multiple_choice_form'] = mcq_form.render()
-                except ValidationFailure as e:
-                    template_vars['multiple_choice_form'] = e.render()
-            else:
-                template_vars['multiple_choice_form'] = mcq_form.render()
-        else:
-            template_vars['multiple_choice_form'] = mcq_form.render()
+            try:
+                schema, question_type = forms.get_question_creation_schema(self.request.POST)
+                form = Form(schema.bind(request=self.request), buttons=('create',), action='')
+                appstruct = form.validate(self.request.POST.items())
+                question_set_id = self.request.matchdict['question_set_id']
+                Question.create(question_set_id, appstruct, self.request.db)
+                return HTTPFound(self.request.route_url('profile'))
+            except ValueError as e:
+                exc = colander.Invalid(form.widget, str(e))
+                form.widget.handle_error(form,exc)
+                template_vars['form'] = (question_type, form.render())
+            except ValidationFailure as e:
+                template_vars['form'] = (question_type, e.render())
         return template_vars
 
     @view_config(route_name='edit_question', renderer='templates/question_edit.pt', request_method='GET', decorator=(requires_logged_in, requires_question_contributor))
@@ -251,7 +254,7 @@ class QuestionViews:
             template_vars = {'page_title':'Answer'} #Need better title.
             self.request.session[Session.QUESTION_STATE] = QuestionSetState(question_set, question_set_id)
             question = self.request.session[Session.QUESTION_STATE].get_current_question()
-            schema = question.form_schema(self.request)
+            schema = question.answer_schema(self.request)
             question_form = Form(schema, buttons=('submit',))
             template_vars['question_form'] = question_form.render()
             return template_vars
@@ -266,7 +269,7 @@ class QuestionViews:
             try:
                 #Store the previous question's answer.
                 question = self.request.session[Session.QUESTION_STATE].get_current_question()
-                schema = question.form_schema(self.request)
+                schema = question.answer_schema(self.request)
                 question_form = Form(schema)
                 appstruct = question_form.validate(self.request.POST.items())
                 self.request.session[Session.QUESTION_STATE].record_answer(appstruct['answer'])
@@ -274,7 +277,7 @@ class QuestionViews:
                 #Present the next question.
                 question = self.request.session[Session.QUESTION_STATE].get_next_question()
                 if question:
-                    schema = question.form_schema(self.request)
+                    schema = question.answer_schema(self.request)
                     question_form = Form(schema, buttons=('submit',))
                     template_vars['question_form'] = question_form.render()
                 else:

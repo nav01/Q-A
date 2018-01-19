@@ -1,5 +1,5 @@
 /*
-    Delete resources via ajax.  
+    Delete resources via ajax.
 */
 $(document).ready(function(){
     $('.delete-form').submit(function(event) {
@@ -8,7 +8,7 @@ $(document).ready(function(){
         var formData = $(this).serialize();
         $.ajax({
             type: 'POST',
-            url: $(this).attr('action'),
+            url: $(form).attr('action'),
             data: formData,
         }).done(function(data, statusText, xhr){
             if(xhr.status == '204'){

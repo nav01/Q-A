@@ -6,12 +6,16 @@
         <script src="${request.static_url('qa:javascript/jquery-sortable.js')}"></script>
     </head>
     <div class="container" metal:fill-slot="content">
-        <select id="question-controller">
-            <option value=''>Select</option>
-            <option value="multiple-choice">Multiple Choice</option>
-        </select>
-        <div id="multiple-choice" style="display: none">
-            ${structure:multiple_choice_form}
+        <form id="question-form-request" action="/question_creation_form" method="GET">
+            <select name='type' id="select-question-type">
+                <tal:block repeat="choice question_choices">
+                    <option value="${choice[0]}">${choice[1]}</option>
+                </tal:block>
+            </select>
+            <input type="submit">
+        </form>
+        <div tal:condition="exists: form" id="form-${form[0]}">
+            ${structure: form[1]}
         </div>
     </div>
 </html>

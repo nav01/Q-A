@@ -1,8 +1,43 @@
+import itertools
+
 from . import models
 
 import colander
 import deform
 import re
+
+#An exception used in models.py when exceptions that should have been prevented by
+#the corresponding form are raised.  This is unlikely to ever be thrown unless
+#an invalid key makes it past validation which makes the dictionary expansion
+#argument raise a type error, which occurs only in the 'create' methods.
+class FormError(ValueError):
+    def __init__(self):
+        super(FormError, self).__init__('An unexpected value was submitted.')
+
+def get_question_creation_schema(post):
+    try:
+        question_type = post[models.Question.type.name]
+    except KeyError as e:
+        raise ValueError('Question Type Not Found')
+    if question_type == models.QuestionType.mcq.name:
+        schema = MultipleChoiceSchema()
+    elif question_type == models.QuestionType.tf.name:
+        schema =  TrueFalseSchema()
+    else:
+        raise ValueError('Question Type Could Not Be Determined')
+    return (schema, question_type)
+
+def get_question_select_options():
+    return [
+        ('', '--Select--'),
+        (models.QuestionType.mcq.name, 'Multiple Choice'),
+        (models.QuestionType.tf.name, 'True False'),
+    ]
+
+#Deform doesn't seem to play nicely with dynamically building schemas.
+#Potentially slow method?
+def merge_schemas(parent, *children):
+    parent.children = parent.children + list(itertools.chain(*[child.children for child in children]))
 
 #deform csrf protection
 class CSRFSchema(colander.MappingSchema):
@@ -27,6 +62,7 @@ class CSRFSchema(colander.MappingSchema):
         validator=__deferred_csrf_validator,
         widget=deform.widget.HiddenWidget(),
     )
+
 #Both wtforms and deform don't seem to easily support dynamic forms with all hidden inputs which
 #would be used to reorder things like questions, so I just decided to create my own.
 class ReorderResourceForm:
@@ -121,12 +157,6 @@ class QuestionSetsSchema(CSRFSchema):
         widget=deform.widget.SequenceWidget(orderable=True)
     )
 
-def get_question_form(q_type):
-    if q_type == models.QuestionType.mcq.name:
-        return MultipleChoiceSchema()
-    else:
-        raise ValueError('Wat do?')
-
 class MultipleChoiceQuestion(colander.Schema):
     __MAX_ANSWER_lENGTH = 50
 
@@ -166,23 +196,22 @@ class MultipleChoiceQuestion(colander.Schema):
         name=models.MultipleChoiceQuestion.correct_answer.name,
         validator=colander.OneOf([x[0] for x in choices]),
         widget=deform.widget.RadioChoiceWidget(values=choices, inline=True),
-        title="Choose the correct answer",
+        title='Choose the correct answer',
     )
 class MultipleChoiceQuestions(colander.SequenceSchema):
     multiple_choice_question = MultipleChoiceQuestion()
 class MultipleChoiceSchema(CSRFSchema):
     multiple_choice_questions = MultipleChoiceQuestions(
-        name=models.MultipleChoiceQuestion.__table__.name,
+        name = models.MultipleChoiceQuestion.__table__.name,
         widget=deform.widget.SequenceWidget(orderable=True)
     )
     question_type = colander.SchemaNode(
         colander.String(),
-        name=models.Question.type.name,
-        default=models.QuestionType.mcq.name,
+        name = models.Question.type.name,
+        default = models.QuestionType.mcq.name,
         validator = colander.OneOf([models.QuestionType.mcq.name]),
-        widget=deform.widget.HiddenWidget(),
+        widget = deform.widget.HiddenWidget(),
     )
-
 class MultipleChoiceAnswer(CSRFSchema):
     def prepare_choices(question):
         choices = []
@@ -208,10 +237,54 @@ class MultipleChoiceAnswer(CSRFSchema):
 
     question = colander.SchemaNode(
         colander.Int(),
-        name='answer',
-        widget=set_choices,
-        validator=set_validator,
-        title=set_title,
+        name = 'answer',
+        widget = set_choices,
+        validator = set_validator,
+        title = set_title,
+    )
+
+class TrueFalseQuestion(colander.Schema):
+    true_choices = ('true', 1, "1")
+    false_choices=('false', 0, "0")
+    choices = ((1, 'True'), (0, 'False'))
+    description = colander.SchemaNode(
+        colander.String(),
+        name = models.TrueFalseQuestion.description.name,
+        widget = deform.widget.RichTextWidget(delayed_load=True),
+        description = 'Enter the question description',
+    )
+    correct_answer = colander.SchemaNode(
+        colander.Boolean(true_choices=true_choices, false_choices=false_choices, false_val=0, true_val=1),
+        name = models.TrueFalseQuestion.correct_answer.name,
+        validator = colander.OneOf([x[0] for x in choices]),
+        widget = deform.widget.RadioChoiceWidget(values=choices, inline=True),
+        title = 'Choose the correct answer',
+    )
+class TrueFalseQuestions(colander.SequenceSchema):
+    true_false_question = TrueFalseQuestion()
+class TrueFalseSchema(CSRFSchema):
+    true_false_questions = TrueFalseQuestions(
+        name = models.TrueFalseQuestion.__table__.name,
+        widget = deform.widget.SequenceWidget(orderable=True),
+    )
+    question_type = colander.SchemaNode(
+        colander.String(),
+        name = models.Question.type.name,
+        default = models.QuestionType.tf.name,
+        validator = colander.OneOf([models.QuestionType.tf.name]),
+        widget = deform.widget.HiddenWidget(),
+    )
+class TrueFalseAnswer(CSRFSchema):
+    @colander.deferred
+    def set_title(node,kw):
+        return kw.get('question').description
+
+    question = colander.SchemaNode(
+        colander.Boolean(true_choices=TrueFalseQuestion.true_choices, false_choices=TrueFalseQuestion.false_choices, false_val=0, true_val=1),
+        name = 'answer',
+        validator = colander.OneOf([x[0] for x in TrueFalseQuestion.choices]),
+        widget = deform.widget.RadioChoiceWidget(values=TrueFalseQuestion.choices, inline=True),
+        title = set_title,
     )
 
 class RegistrationSchema(CSRFSchema):

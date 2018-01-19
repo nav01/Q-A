@@ -3,6 +3,7 @@ from pyramid.config import Configurator
 from pyramid.session import UnencryptedCookieSessionFactoryConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 from .models import Base
 
 def main(global_config, **settings):
@@ -12,8 +13,8 @@ def main(global_config, **settings):
     deform.renderer.configure_zpt_renderer()
     config.add_static_view('static_deform', 'deform:static')
 
-    sqlalchemy_engine = engine_from_config(settings, prefix='sqlalchemy.')
-    #Base.metadata.drop_all(sqlalchemy_engine)
+    sqlalchemy_engine = engine_from_config(settings, prefix='sqlalchemy.', poolclass=NullPool)
+    # Base.metadata.drop_all(sqlalchemy_engine)
     Base.metadata.create_all(sqlalchemy_engine)
     Session = sessionmaker(bind=sqlalchemy_engine)
 
@@ -32,7 +33,7 @@ def main(global_config, **settings):
     config.add_route('answer_question_set', '/set/{question_set_id}/answer')
     config.add_route('delete_question_set', '/set/{question_set_id}/delete')
     config.add_route('report', '/report')
-    config.add_route('question_form', '/set/{question_set_id}/question_form')
+    config.add_route('question_creation_form', '/question_creation_form')
     config.add_route('create_question', '/set/{question_set_id}/create_question')
     config.add_route('edit_question', '/set/{question_set_id}/question/{question_id}/edit')
     config.add_route('delete_question', '/set/{question_set_id}/question/{question_id}/delete')

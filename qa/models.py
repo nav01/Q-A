@@ -3,7 +3,7 @@ import enum
 from passlib.hash import pbkdf2_sha256
 from psycopg2 import errorcodes
 from sqlalchemy import (
-    Column, Integer, String, Enum, ForeignKey,
+    Column, Integer, String, Boolean, Enum, ForeignKey,
     event,
     CheckConstraint, UniqueConstraint,
     func,
@@ -17,7 +17,7 @@ from sqlalchemy.orm.exc import NoResultFound
 #This is to resolve an issue with cyclic imports between the forms and models modules.
 #The reason for cyclic imports is so that the form fields can use database column names
 #to reduce additional processing when going from form to model instance.
-
+#TODO Solve cyclic import issue.
 Base = declarative_base()
 
 class User(Base):
@@ -64,7 +64,7 @@ class Topic(Base):
     question_sets = relationship('QuestionSet', back_populates='topic', passive_deletes='all')
 
     __table_args__ = (
-        UniqueConstraint('title','user_id'),
+        UniqueConstraint('title','user_id', name='unique_topic_per_user'),
     )
 
     def user_is_owner(user_id, topic_id, db):
@@ -100,11 +100,11 @@ class Topic(Base):
                 raise ValueError('A topic with that title exists already.')
 
     def edit_schema(self):
-        from .forms import CSRFSchema, Topic
+        from .forms import CSRFSchema, Topic, merge_schemas
 
         csrf_schema = CSRFSchema()
         topic_schema = Topic()
-        csrf_schema.children = csrf_schema.children + topic_schema.children
+        merge_schemas(csrf_schema, topic_schema)
         return csrf_schema
 
 class QuestionSet(Base):
@@ -118,7 +118,7 @@ class QuestionSet(Base):
     questions = relationship('Question', back_populates='question_set', passive_deletes='all', order_by='Question.question_order')
 
     __table_args__ = (
-        UniqueConstraint('topic_id', 'description'),
+        UniqueConstraint('topic_id', 'description', name='unique_description_per_topic'),
     )
 
     def user_is_contributor(user_id, question_set_id, db):
@@ -155,11 +155,11 @@ class QuestionSet(Base):
                 raise ValueError('A question set with that description exists already.')
 
     def edit_schema(self):
-        from .forms import CSRFSchema, QuestionSet
+        from .forms import CSRFSchema, QuestionSet, merge_schemas
 
         csrf_schema = CSRFSchema()
         question_set_schema = QuestionSet()
-        csrf_schema.children = csrf_schema.children + question_set_schema.children
+        merge_schemas(csrf_schema, question_set_schema)
         return csrf_schema
 
     def reorder(self, new_order, db):
@@ -169,7 +169,7 @@ class QuestionSet(Base):
         db.commit()
 
     def get_questions(self, db):
-        question_plus_type = with_polymorphic(Question, [MultipleChoiceQuestion])
+        question_plus_type = with_polymorphic(Question, [MultipleChoiceQuestion, TrueFalseQuestion])
         questions = db.query(question_plus_type).\
             join(QuestionSet).\
             filter(Question.question_set_id == self.id).\
@@ -181,7 +181,17 @@ class QuestionSet(Base):
 
 class QuestionType(enum.Enum):
     question = 1
-    mcq = 2
+    mcq = 2 #multiple choice question
+    tf = 3 #true/false
+
+    @classmethod
+    def get_question_class(cls, question_type):
+        if question_type == cls.mcq.name:
+            return MultipleChoiceQuestion
+        elif question_type == cls.tf.name:
+            return TrueFalseQuestion
+        elif question_type == cls.question.name:
+            return Question
 
 class Question(Base):
     __tablename__ = 'questions'
@@ -194,7 +204,7 @@ class Question(Base):
     question_set = relationship('QuestionSet', back_populates='questions')
 
     __table_args__ = (
-        UniqueConstraint('question_set_id', 'description'),
+        UniqueConstraint('question_set_id', 'description', name='unique_description_per_set'),
         UniqueConstraint('question_set_id', 'question_order', name='unique_order_per_set', deferrable=True)
     )
     __mapper_args__ = {
@@ -202,27 +212,66 @@ class Question(Base):
         'polymorphic_on': type,
     }
 
-    #Derived classes should override and implement the following methods.
-    def form_schema(self, **kwargs):
-        pass
+    REPORT_TEMPLATE = '''
+        <h4>{}</h4>
+        <p>{}</p>
+        <p>{}</p>
+        <i class="glyphicon glyphicon {}"></i>
+    '''
 
-    def edit_schema(self, **kwargs):
-        pass
+    @classmethod
+    def report(cls, description, correct_answer, chosen_answer):
+        t = cls.REPORT_TEMPLATE.format(
+            description,
+            correct_answer,
+            chosen_answer,
+            {},
+        )
+        if chosen_answer == correct_answer:
+            return t.format('glyphicon-ok')
+        else:
+            return t.format('glyphicon-remove')
 
-    def report(self):
-        pass
+    @classmethod
+    def create(cls, question_set_id, values, db):
+        from .forms import FormError
 
-    def create(question_set_id, values, db):
         try:
-            q_type = values[Question.type.name]
-            if q_type == QuestionType.mcq.name:
-                MultipleChoiceQuestion.create(question_set_id, values, db)
-        except Exception as e:
-            raise e
+            q_type = values[cls.type.name]
+            Q_class = QuestionType.get_question_class(q_type)
+            order_start = QuestionSet.last_question_order(question_set_id, db) + 1
+            new_questions = [Q_class(question_set_id=question_set_id, question_order=order_start + i, **value)
+                for i, value in enumerate(values[Q_class.__table__.name])]
+            db.add_all(new_questions)
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            raise cls.handle_db_exception(e, Q_class)
+        except Exception as _:
+            raise FormError()
+
+    #Should be an appropriate method for editing all question types, even multipart questions that are yet to be implemented.
+    #However, it accesses variables in the child class, though not directly because of the setattr use, which seems like
+    #a violation of inheritance.  On the other hand, I would just be writing methods in the child class that will end up
+    #consisting of just this function call.
+    def edit(self, new_values, db):
+        from .forms import FormError
+
+        try:
+            #Said to be a slow method to update via dictionary, but can't find anything better right now.
+            for key, value in new_values.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            raise Question.handle_db_exception(e, QuestionType.get_question_class(self.type.name))
+        except Exception as _:
+            raise FormError()
 
     def user_is_contributor(user_id, question_set_id, question_id, db):
         try:
-            question_plus_type = with_polymorphic(Question, [MultipleChoiceQuestion])
+            question_plus_type = with_polymorphic(Question, [MultipleChoiceQuestion, TrueFalseQuestion])
             question = db.query(question_plus_type).\
                 join(QuestionSet).\
                 join(Topic).\
@@ -232,8 +281,18 @@ class Question(Base):
         except NoResultFound as _:
             return False
 
+    def handle_db_exception(e, Q_class):
+        if e.orig.pgcode == errorcodes.NOT_NULL_VIOLATION:
+            raise ValueError('A required value is missing.')
+        elif e.orig.diag.constraint_name == 'unique_description_per_set':
+            raise ValueError('Questions must be unique per set.')
+        elif e.orig.diag.constraint_name == 'unique_order_per_set':
+            raise ValueError('Questions in a set must have a unique order.')
+        else:
+            raise Q_class.handle_db_exception(e)
+
 class MultipleChoiceQuestion(Question):
-    __tablename__='multiple_choice_questions'
+    __tablename__ = 'multiple_choice_questions'
 
     id = Column(Integer, ForeignKey('questions.id', ondelete='cascade'), primary_key=True)
     choice_one = Column(String(50), nullable=False)
@@ -243,63 +302,70 @@ class MultipleChoiceQuestion(Question):
     correct_answer = Column(Integer, nullable=False)
 
     __table_args__ = (
-        CheckConstraint('choice_one NOT IN (choice_two, choice_three, choice_four)'),
-        CheckConstraint('choice_two NOT IN (choice_one, choice_three, choice_four)'),
-        CheckConstraint('choice_three NOT IN (choice_one, choice_two, choice_four)'),
-        CheckConstraint('choice_four NOT IN (choice_one, choice_two, choice_three)'),
-        CheckConstraint('correct_answer >= 0'),
-        CheckConstraint('correct_answer <= 3'),
+        CheckConstraint("""
+            choice_one NOT IN (choice_two, choice_three, choice_four) AND
+            choice_two NOT IN (choice_one, choice_three, choice_four) AND
+            choice_three NOT IN (choice_one, choice_two, choice_four) AND
+            choice_four NOT IN (choice_one, choice_two, choice_three)
+        """, name='unique_multiple_choices'),
+        CheckConstraint('correct_answer >= 0 AND correct_answer <= 3', name='answer_in_range'),
     )
     __mapper_args__ = {
         'polymorphic_identity': QuestionType.mcq,
     }
 
-    @classmethod
-    def create(cls, question_set_id, values, db):
-        try:
-            enum_type = getattr(QuestionType, values[Question.type.name])
-            order_start = QuestionSet.last_question_order(question_set_id,db) + 1
-            new_multiple_choice_questions = [cls(question_set_id=question_set_id, question_order = order_start + i, type=enum_type, **value)
-                for i,value in enumerate(values[cls.__table__.name])]
-            db.add_all(new_multiple_choice_questions)
-            db.commit()
-        except IntegrityError as e:
-            db.rollback()
-            if e.orig.pgcode == errorcodes.UNIQUE_VIOLATION:
-                raise ValueError('Some submitted question(s) exist already.')
-            elif e.orig.pgcode == errorcodes.CHECK_VIOLATION:
-                raise ValueError('Chosen answer does not exist.')
-
-    def edit(self, new_values, db):
-        try:
-            #Said to be a slow method to update via dictionary, but can't find anything better right now.
-            for key, value in new_values.items():
-                setattr(self, key, value)
-            db.commit()
-        except IntegrityError as e:
-            db.rollback()
-            if e.orig.pgcode == errorcodes.UNIQUE_VIOLATION:
-                raise ValueError('A question with that description exists already.')
-            elif e.orig.pgcode == errorcodes.CHECK_VIOLATION:
-                raise ValueError('Chosen answer does not exist.')
-
-    def form_schema(self, request):
+    def answer_schema(self, request):
         from .forms import MultipleChoiceAnswer
 
         answer_choices = MultipleChoiceAnswer.prepare_choices(self)
-        schema = MultipleChoiceAnswer().bind(request=request,choices=answer_choices,question=self)
+        schema = MultipleChoiceAnswer().bind(request=request, choices=answer_choices, question=self)
         return schema
 
     def edit_schema(self):
-        from .forms import CSRFSchema, MultipleChoiceQuestion
+        from .forms import CSRFSchema, MultipleChoiceQuestion, merge_schemas
 
         csrf_schema = CSRFSchema()
         mcq_schema =  MultipleChoiceQuestion()
-        csrf_schema.children = csrf_schema.children + mcq_schema.children
+        merge_schemas(csrf_schema, mcq_schema)
         return csrf_schema
 
     def report(self, answer):
         choices = [self.choice_one, self.choice_two, self.choice_three, self.choice_four]
-        chosen_answer = choices[answer]
-        correct_answer = choices[self.correct_answer]
-        return (self.description, correct_answer, chosen_answer, chosen_answer == correct_answer)
+        return Question.report(self.description, choices[self.correct_answer], choices[answer])
+
+    def handle_db_exception(e):
+        if e.orig.diag.constraint_name == 'unique_multiple_choices':
+            raise ValueError('All answer choices must be unique.')
+        elif e.orig.diag.constraint_name == 'answer_in_range':
+            raise ValueError('')
+
+class TrueFalseQuestion(Question):
+    __tablename__ = 'true_false_questions'
+
+    id = Column(Integer, ForeignKey('questions.id', ondelete='cascade'), primary_key=True)
+    correct_answer = Column(Boolean, nullable=False)
+
+    __mapper_args__ = {
+        'polymorphic_identity': QuestionType.tf,
+    }
+
+    def answer_schema(self, request):
+        from .forms import TrueFalseAnswer
+
+        return TrueFalseAnswer().bind(request=request, question=self)
+
+    def edit_schema(self):
+        from .forms import CSRFSchema, TrueFalseQuestion, merge_schemas
+
+        csrf_schema = CSRFSchema()
+        tf_schema = TrueFalseQuestion()
+        merge_schemas(csrf_schema, tf_schema)
+        return csrf_schema
+
+    def report(self, answer):
+        return Question.report(self.description, bool(self.correct_answer), bool(answer))
+
+    #True False Questions are simple enough that they shouldn't raise any specific exceptions
+    #that the create method in the super class (Question) can't handle.
+    def handle_db_exception(e):
+        raise ValueError('Unknown Error.')

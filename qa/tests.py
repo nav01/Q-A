@@ -150,12 +150,14 @@ class QuestionViewTests(DbTestCase):
     def __init__(self, *args, **kwargs):
         DbTestCase.__init__(self,*args,**kwargs)
 
+    #Related to answering a question set.
     def setUp(self):
         from .models import User, Topic, QuestionSet, MultipleChoiceQuestion as MCQ
         from .views import Session
         from .models import Question
         from .models import QuestionType
 
+        self.addCleanup(self.clear_db)
         self.config = testing.setUp()
         self.config.add_route('report','/report')
         self.create_db()
@@ -178,7 +180,6 @@ class QuestionViewTests(DbTestCase):
             correct_answer=0,
             question_set_id=1,
             type=QuestionType.mcq,
-
         )
         self.question2 = MCQ(
             id=2,
@@ -191,7 +192,6 @@ class QuestionViewTests(DbTestCase):
             correct_answer=1,
             question_set_id=1,
             type=QuestionType.mcq,
-
         )
         self.db.add_all([self.user,self.topic,self.question_set,self.question,self.question2])
         self.db.commit()
@@ -203,6 +203,8 @@ class QuestionViewTests(DbTestCase):
         self.clear_db()
         testing.tearDown()
 
+    #Test that the questions are properly set up by verifying that the question
+    #description is present in the form.
     def test_setup(self):
         from .views import QuestionViews
 
@@ -211,6 +213,8 @@ class QuestionViewTests(DbTestCase):
         response = view.setup()
         self.assertTrue(self.question.description in response['question_form'])
 
+    #Test that, upon answering a question, the next one is presented by checking
+    #that the description is present in the form.
     def test_answer(self):
         from .views import QuestionViews
 
@@ -222,6 +226,8 @@ class QuestionViewTests(DbTestCase):
         response = view.answer()
         self.assertTrue(self.question2.description in response['question_form'])
 
+    #Test that, when a question set is exhausted (by answering it), that the user
+    #is on the report page.
     def test_redirects_to_report_on_empty_question_list(self):
         from .views import QuestionViews
 
@@ -234,10 +240,13 @@ class QuestionViewTests(DbTestCase):
         response = view.answer() #should be at report page now
         self.assertEqual(response.location,"http://example.com/report", "Question Set Exhausted")
 
+#Test the User class from models.py
 class UserTests(DbTestCase):
     def __init__(self, *args, **kwargs):
         DbTestCase.__init__(self, *args, **kwargs)
+
     def setUp(self):
+        self.addCleanup(self.clear_db)
         self.config = testing.setUp()
         self.create_db()
 
@@ -283,6 +292,7 @@ class UserTests(DbTestCase):
         values[self.pass_key] = 'wrongpass'
         self.assertFalse(User.login(values, self.db), 'Login should fail.')
 
+#Test the Topic class from models.py
 class TopicTests(DbTestCase):
     def __init__(self, *args, **kwargs):
         DbTestCase.__init__(self, *args, **kwargs)
@@ -290,6 +300,7 @@ class TopicTests(DbTestCase):
     def setUp(self):
         from .models import User
 
+        self.addCleanup(self.clear_db)
         self.config = testing.setUp()
         self.create_db()
 
@@ -302,6 +313,7 @@ class TopicTests(DbTestCase):
         self.clear_db()
         testing.tearDown()
 
+    #Test whether the user is the owner (the one who created it).
     def test_user_is_owner(self):
         from .models import Topic
 
@@ -333,10 +345,16 @@ class TopicTests(DbTestCase):
 
     def test_topic_create_duplicate_raises_value_error(self):
         from .models import Topic
+        from sqlalchemy.exc import IntegrityError
 
-        values = {'topics':[{'title': 'Name'}]}
-        Topic.create(self.user.id, values, self.db)
-        self.assertRaises(ValueError, Topic.create, self.user.id, values, self.db)
+        topic1 =  Topic(user_id=self.user.id, title='a')
+        topic2 =  Topic(user_id=self.user.id, title='a')
+        self.db.add_all([topic1, topic2])
+        try:
+            self.db.commit()
+            self.fail('Expected IntegrityError to be thrown')
+        except IntegrityError as e:
+            self.assertEqual(e.orig.diag.constraint_name, 'unique_topic_per_user')
 
     def test_user_delete_cascades(self):
         from .models import Topic
@@ -361,18 +379,8 @@ class TopicTests(DbTestCase):
         topic.edit(values, self.db)
         self.assertEqual(topic.title, values['title'])
 
-    def test_edit_unique_constraint_violation(self):
-        from .models import Topic
 
-        values = {'user_id': self.user.id, 'title': 'Test Title, Please Ignore'}
-        topic = Topic(**values)
-        values['title'] = '_' + values['title']
-        topic2 = Topic(**values)
-        self.db.add_all([topic, topic2])
-        self.db.commit()
-
-        self.assertRaises(ValueError, topic.edit, values, self.db)
-
+#Test the QuestionSet class from models.py
 class QuestionSetTests(DbTestCase):
     def __init__(self, *args, **kwargs):
         DbTestCase.__init__(self, *args, **kwargs)
@@ -381,6 +389,7 @@ class QuestionSetTests(DbTestCase):
         from .models import User
         from .models import Topic
 
+        self.addCleanup(self.clear_db)
         self.config = testing.setUp()
         self.create_db()
 
@@ -396,6 +405,8 @@ class QuestionSetTests(DbTestCase):
         self.clear_db()
         testing.tearDown()
 
+    #Test that QuestionSet.create works by creating a question and then  querying
+    #for it to see that it was successfully added.
     def test_create_question_set(self):
         from .models import QuestionSet
         from sqlalchemy.orm.exc import NoResultFound
@@ -409,13 +420,22 @@ class QuestionSetTests(DbTestCase):
         except NoResultFound as e:
             self.fail('Expected question set to exist.')
 
-    def test_create_duplicate_question_set_raises_exception(self):
+    #Test that creating a duplicate question set (description) raises an exception
+    #by creating a question set and then trying to create it again.
+    def test_unique_description_per_topic(self):
         from .models import QuestionSet
+        from sqlalchemy.exc import IntegrityError
 
-        values = {'topic_id':self.topic.id, 'question_sets':[{'description':'Question Set'}]}
-        QuestionSet.create(values, self.db)
-        self.assertRaises(ValueError, QuestionSet.create, values, self.db)
+        question_set1 =  QuestionSet(topic_id=self.topic.id, description='a')
+        question_set2 =  QuestionSet(topic_id=self.topic.id, description='a')
+        self.db.add_all([question_set1, question_set2])
+        try:
+            self.db.commit()
+            self.fail('Expected IntegrityError to be thrown')
+        except IntegrityError as e:
+            self.assertEqual(e.orig.diag.constraint_name, 'unique_description_per_topic')
 
+    #Test that a user is a contributor (and therefore has permissions) to a question set.
     def test_user_is_contributor(self):
         from .models import QuestionSet
 
@@ -441,7 +461,7 @@ class QuestionSetTests(DbTestCase):
 
         self.assertFalse(self.db.query(QuestionSet).filter(QuestionSet.topic_id == self.topic.id).one_or_none())
 
-    def test_edit_success(self):
+    def test_edit(self):
         from .models import QuestionSet
 
         values = {'topic_id':self.topic.id, 'description':'Question Set'}
@@ -453,18 +473,9 @@ class QuestionSetTests(DbTestCase):
         question_set.edit(values, self.db)
         self.assertEqual(question_set.description, values['description'])
 
-    def test_edit_unique_constraint_violation(self):
-        from .models import QuestionSet
-
-        values = {'topic_id':self.topic.id, 'description':'Question Set'}
-        question_set = QuestionSet(**values)
-        values['description'] = '_' + values['description']
-        question_set2 = QuestionSet(**values)
-        self.db.add_all([question_set,question_set2])
-        self.db.commit()
-
-        self.assertRaises(ValueError, question_set.edit, values, self.db)
-
+    #Test that questions are retrieved by their question order numbers (ascending)
+    #by creating questions (out of order for good measure), retrieving them, and
+    #then checking the order against a manually ordered list of the questions.
     def test_get_questions(self):
         from .models import Question
         from .models import QuestionType
@@ -478,18 +489,19 @@ class QuestionSetTests(DbTestCase):
         self.assertEqual([], question_set.get_questions(self.db))
 
         #Make sure order_by question_order is present and working properly.
-        question1 = Question(id=1, question_set_id=question_set.id, description='test1', question_order=1, type=QuestionType.question)
-        question3 = Question(id=2, question_set_id=question_set.id, description='test2', question_order=9, type=QuestionType.question)
-        question5 = Question(id=3, question_set_id=question_set.id, description='test3', question_order=11, type=QuestionType.question)
-        question2 = Question(id=4, question_set_id=question_set.id, description='test4', question_order=4, type=QuestionType.question)
-        question4 = Question(id=5, question_set_id=question_set.id, description='test5', question_order=10, type=QuestionType.question)
+        question1 = Question(id=1, question_set_id=question_set.id, description='test1', question_order=1)
+        question3 = Question(id=2, question_set_id=question_set.id, description='test2', question_order=9)
+        question5 = Question(id=3, question_set_id=question_set.id, description='test3', question_order=11)
+        question2 = Question(id=4, question_set_id=question_set.id, description='test4', question_order=4)
+        question4 = Question(id=5, question_set_id=question_set.id, description='test5', question_order=10)
 
         self.db.add_all([question1, question3, question5, question2, question4])
         self.db.commit()
         ordered_questions = [question1,question2,question3,question4,question5]
         self.assertEqual(ordered_questions, question_set.get_questions(self.db))
 
-
+    #Test reordering of questions.  The constraint which maintains uniqueness in
+    #order number should be deferred.
     def test_reorder(self):
         from .models import QuestionSet
         from .models import Question
@@ -499,8 +511,8 @@ class QuestionSetTests(DbTestCase):
         question_set = QuestionSet(**values)
         self.db.add(question_set)
         self.db.commit()
-        question1 = Question(id=1, question_set_id=question_set.id, description='test1', question_order=0, type=QuestionType.question)
-        question2 = Question(id=2, question_set_id=question_set.id, description='test2', question_order=1, type=QuestionType.question)
+        question1 = Question(id=1, question_set_id=question_set.id, description='test1', question_order=0)
+        question2 = Question(id=2, question_set_id=question_set.id, description='test2', question_order=1)
         self.db.add_all([question1,question2])
         self.db.commit()
         try:
@@ -509,6 +521,9 @@ class QuestionSetTests(DbTestCase):
             self.fail('Unique constraint unique_order_per_set was not deferred.')
         self.assertTrue(question1.question_order == 1 and question2.question_order == 0)
 
+    #Test that the order of the last question in the set is properly obtained. This
+    #number is used in question creation.  When no questions are in the set, it should
+    #return -1.
     def test_last_question_order(self):
         from .models import QuestionSet
         from .models import Question
@@ -521,10 +536,133 @@ class QuestionSetTests(DbTestCase):
         #test default value if no quetsions in set
         self.assertEqual(-1, QuestionSet.last_question_order(question_set.id, self.db))
 
-        question1 = Question(id=1, question_set_id=question_set.id, description='test1', question_order=0, type=QuestionType.question)
+        question1 = Question(id=1, question_set_id=question_set.id, description='test1', question_order=0)
         self.db.add(question1)
         self.db.commit()
         self.assertEqual(0, QuestionSet.last_question_order(question_set.id, self.db))
+
+class QuestionTests(DbTestCase):
+    def __init__(self, *args, **kwargs):
+        DbTestCase.__init__(self, *args, **kwargs)
+
+    def setUp(self):
+        from .models import User
+        from .models import Topic
+        from .models import QuestionSet
+
+        self.addCleanup(self.clear_db)
+        self.config = testing.setUp()
+        self.create_db()
+
+        #Arbitrary ids.
+        user_id = 4
+        topic_id = 9
+        set_id = 22
+        self.user = User(id=user_id, username='user', password='password')
+        self.topic = Topic(id=topic_id, title='Name', user_id=user_id)
+        self.question_set = QuestionSet(id=set_id, description='Desc', topic_id=topic_id)
+        self.db.add_all([self.user, self.topic, self.question_set])
+        self.db.commit()
+
+    def tearDown(self):
+        self.clear_db()
+        testing.tearDown()
+
+    def test_create(self):
+        from .models import Question
+
+        question1 = {'description': 'a'}
+        question2 = {'description': 'b'}
+        values = {
+            'type': 'question',
+            'questions': [question1, question2],
+        }
+
+        Question.create(self.question_set.id, values, self.db)
+        questions = self.db.query(Question).all()
+        self.assertTrue(questions[0].description == 'a' and questions[0].question_order == 0)
+        self.assertTrue(questions[1].description == 'b' and questions[1].question_order == 1)
+
+    def test_edit(self):
+        from .models import Question
+
+        question = Question(description='a', question_order=0, question_set_id=self.question_set.id)
+        self.db.add(question)
+        self.db.commit()
+
+        #Notice, bad attributes shouldn't matter, assuming they somehow make it past
+        #form validation.  Only already present attributes will be updated.
+        new_values = {'description': 'new_description', 'garble': 5, 'bad_attr': 'bye'}
+        question.edit(new_values, self.db)
+        self.assertEqual(question.description, 'new_description')
+
+
+    def test_user_is_contributor(self):
+        from .models import Question, QuestionType, User
+
+        question_id = 9
+        bad_question_id = 100
+        bad_set_id = 23
+        bad_user_id = 5
+        question = Question(id=question_id, description='Test', question_order=0, question_set_id=self.question_set.id, type=QuestionType.question)
+        self.db.add(question)
+        self.db.commit
+
+        self.assertTrue(Question.user_is_contributor(self.user.id, self.question_set.id, question_id, self.db), 'User should have permission!')
+        self.assertFalse(Question.user_is_contributor(self.user.id, self.question_set.id, bad_question_id, self.db), 'User should not have permission because question does not exist!')
+        self.assertFalse(Question.user_is_contributor(self.user.id, self.question_set.id, bad_set_id, self.db), 'User should not have permission because set does not exist!')
+        self.assertFalse(Question.user_is_contributor(bad_user_id, self.question_set.id, question_id, self.db), 'User should not have permission because user does not exist!')
+
+    #Tests that questions must have a unique description per set by attempting
+    #to create two questions with the same description.
+    def test_unique_description_per_set_constraint(self):
+        from .models import Question
+        from sqlalchemy.exc import IntegrityError
+
+        #description argument is the one of interest
+        question1 = Question(description='test', question_order=0, question_set_id=self.question_set.id)
+        question2 = Question(description='test', question_order=1, question_set_id=self.question_set.id)
+        self.db.add_all([question1, question2])
+        try:
+            self.db.commit()
+            self.fail('Expected IntegrityError to be thrown')
+        except IntegrityError as e:
+            self.assertEqual(e.orig.diag.constraint_name, 'unique_description_per_set')
+
+    #Tests that no two (or more I suppose) questions belonging to one set can have
+    #the same order value.
+    def test_unique_order_per_set_constraint(self):
+        from .models import Question
+        from sqlalchemy.exc import IntegrityError
+
+        #question_order argument is the one of interest
+        question1 = Question(description='test', question_order=0, question_set_id=self.question_set.id)
+        question2 = Question(description='testtest', question_order=0, question_set_id=self.question_set.id)
+        self.db.add_all([question1, question2])
+        try:
+            self.db.commit()
+            self.fail('Expected IntegrityError to be thrown')
+        except IntegrityError as e:
+            self.assertEqual(e.orig.diag.constraint_name, 'unique_order_per_set')
+
+    #Tests that the appropriate glyphicon (bootstrap) is loaded, based on whether
+    #the user's answer is equal to the actual answer.
+    def test_report(self):
+        from .models import Question
+        correct_answer = 0
+        wrong_answer = 1
+        self.assertTrue('glyphicon-ok' in Question.report('', correct_answer, correct_answer))
+        self.assertTrue('glyphicon-remove' in Question.report('', correct_answer, wrong_answer))
+
+    def test_question_set_delete_cascades(self):
+        from .models import Question
+        from sqlalchemy import inspect
+        question = Question(description='a', question_order=0, question_set_id=self.question_set.id)
+        self.db.add(question)
+        self.db.commit()
+        self.db.delete(self.question_set)
+        self.db.commit()
+        self.assertFalse(self.db.query(Question).filter(Question.question_set_id == self.question_set.id).one_or_none())
 
 class MultipleChoiceQuestionTests(DbTestCase):
     def __init__(self, *args, **kwargs):
@@ -539,6 +677,7 @@ class MultipleChoiceQuestionTests(DbTestCase):
         self.config = testing.setUp()
         self.create_db()
 
+        #Arbitrary ids.
         user_id = 4
         topic_id = 9
         set_id = 22
@@ -566,102 +705,102 @@ class MultipleChoiceQuestionTests(DbTestCase):
         self.clear_db()
         testing.tearDown()
 
-    def test_create_question(self):
+    #Test the valid answer range a multiple choice question can have.
+    def test_answer_in_range_constraint(self):
         from .models import MultipleChoiceQuestion as MCQ
-        from sqlalchemy.orm.exc import NoResultFound
+        from sqlalchemy.exc import IntegrityError
 
-        self.mcq['id'] = 31
-        try:
-            MCQ.create(self.question_set.id, self.values, self.db)
-            self.db.query(MCQ).filter(MCQ.id==self.mcq['id']).one()
-        except ValueError as e:
-            self.fail('Unexpected value error was raised')
-        except NoResultFound as e:
-            self.fail('Expected question to exist.')
-
-    def test_duplicate_question_raises_exception(self):
-        from .models import MultipleChoiceQuestion as MCQ
-
-        MCQ.create(self.question_set.id, self.values, self.db)
-        self.assertRaises(ValueError, MCQ.create,self.question_set.id, self.values, self.db)
-
-    def test_correct_answer_constraints(self):
-        from .models import MultipleChoiceQuestion as MCQ
+        def test(range_extreme):
+            question = MCQ(**self.mcq, question_set_id=self.question_set.id, question_order=0)
+            try:
+                question.correct_answer = range_extreme
+                self.db.add(question)
+                self.db.commit()
+                self.fail('Expected IntegrityError to be thrown.')
+            except IntegrityError as e:
+                self.db.rollback()
+                self.assertEqual(e.orig.diag.constraint_name, 'answer_in_range')
 
         below_range_num = -1
         above_range_num = 4
-        self.values['multiple_choice_questions'][0]['correct_answer'] = below_range_num
-        self.assertRaises(ValueError, MCQ.create,self.question_set.id, self.values, self.db)
+        test(below_range_num)
+        test(above_range_num)
 
-        self.values['multiple_choice_questions'][0]['correct_answer'] = above_range_num
-        self.assertRaises(ValueError, MCQ.create,self.question_set.id, self.values, self.db)
-
-    def test_user_is_contributor(self):
-        from .models import MultipleChoiceQuestion as MCQ, User
-
-        self.mcq['id'] = 19
-        bad_question_id = 100
-        bad_set_id = 23
-        bad_user_id = 5
-        MCQ.create(self.question_set.id, self.values, self.db)
-
-        self.assertTrue(MCQ.user_is_contributor(self.user.id, self.question_set.id, self.mcq['id'], self.db), 'User should have permission!')
-        self.assertFalse(MCQ.user_is_contributor(self.user.id, self.question_set.id, bad_question_id, self.db), 'User should not have permission because question does not exist!')
-        self.assertFalse(MCQ.user_is_contributor(self.user.id, self.question_set.id, bad_set_id, self.db), 'User should not have permission because set does not exist!')
-        self.assertFalse(MCQ.user_is_contributor(bad_user_id, self.question_set.id, self.mcq['id'], self.db), 'User should not have permission because user does not exist!')
-
-    def test_edit_success(self):
+    def test_unique_multiple_choices_constraint(self):
         from .models import MultipleChoiceQuestion as MCQ
+        from sqlalchemy.exc import IntegrityError
 
+        def test(question):
+            try:
+                self.db.add(question)
+                self.db.commit()
+                self.fail('Expected IntegrityError to be thrown.')
+            except IntegrityError as e:
+                self.db.rollback()
+                self.assertEqual(e.orig.diag.constraint_name, 'unique_multiple_choices')
+
+        question = MCQ(description='a', question_set_id=self.question_set.id, question_order=0, correct_answer=0)
+        question.choice_one = question.choice_two = question.choice_three = question.choice_four = 'same choice'
+        test(question)
+        question.choice_one = question.choice_two = question.choice_three = 'same choice 2'
+        test(question)
+        question.choice_one = question.choice_two = 'same choice 3'
+        test(question)
+
+    #Test that deleting the super class (Question) instance of MultipleChoiceQuestion
+    #deletes the multiple choice question from the database.
+    def test_delete_question_cascades(self):
+        from .models import Question, MultipleChoiceQuestion as MCQ
         self.mcq['question_set_id'] = self.question_set.id
         self.mcq['question_order'] = 1
         question = MCQ(**self.mcq)
         self.db.add(question)
         self.db.commit()
 
-        new_question_description = '_' + self.mcq['description']
-        self.mcq['description'] = new_question_description
-        question.edit(self.mcq, self.db)
-        self.assertEqual(question.description, new_question_description, 'Description should have changed.')
-
-    def test_edit_unique_constraint_violation(self):
-        from .models import MultipleChoiceQuestion as MCQ
-
-        self.mcq['question_set_id'] = self.question_set.id
-        self.mcq['question_order'] = 1
-        question = MCQ(**self.mcq)
-        self.mcq['description'] = '_' + self.mcq['description']
-        self.mcq['question_order'] = 2
-        question2 = MCQ(**self.mcq)
-        self.db.add_all([question,question2])
+        #Get and delete the base instance.
+        question_base_instance = self.db.query(Question).filter(Question.id == 1).one_or_none()
+        self.db.delete(question_base_instance)
         self.db.commit()
+        #Check that the descendant instance's data is no longer in the database.
+        self.assertFalse(self.db.query(MCQ).filter(Question.id == question.id).one_or_none())
 
-        self.assertRaises(ValueError, question.edit, self.mcq, self.db)
+class TrueFalseQuestionTests(DbTestCase):
+    def __init__(self, *args, **kwargs):
+        DbTestCase.__init__(self, *args, **kwargs)
 
-    def test_edit_check_constraint_violation(self):
-        from .models import MultipleChoiceQuestion as MCQ
+    def setUp(self):
+        from .models import User
+        from .models import Topic
+        from .models import QuestionSet
 
-        self.mcq['question_set_id'] = self.question_set.id
-        self.mcq['question_order'] = 1
-        question = MCQ(**self.mcq)
-        self.db.add(question)
+        self.addCleanup(self.clear_db)
+        self.config = testing.setUp()
+        self.create_db()
+
+        #Arbitrary ids.
+        user_id = 4
+        topic_id = 9
+        set_id = 22
+        self.user = User(id=user_id, username='user', password='password')
+        self.topic = Topic(id=topic_id, title='Name', user_id=user_id)
+        self.question_set = QuestionSet(id=set_id, description='Desc', topic_id=topic_id)
+        self.db.add(self.user)
+        self.db.add(self.topic)
+        self.db.add(self.question_set)
         self.db.commit()
+        self.tf = {
+            'description':'Sample',
+            'correct_answer':False,
+        }
+        self.values = {
+            'type': 'tf',
+            'multiple_choice_questions': [self.tf]
+        }
 
-        self.mcq['correct_answer'] = 200
-        self.assertRaises(ValueError, question.edit, self.mcq, self.db)
+    def tearDown(self):
+        self.clear_db()
+        testing.tearDown()
 
-    def test_question_set_delete_cascades(self):
-        from .models import MultipleChoiceQuestion as MCQ
-
-        self.mcq['question_set_id'] = self.question_set.id
-        self.mcq['question_order'] = 1
-        new_mcq = MCQ(**self.mcq)
-        self.db.add(new_mcq)
-        self.db.commit()
-        self.db.delete(self.question_set)
-        self.db.commit()
-
-        self.assertFalse(self.db.query(MCQ).filter(MCQ.question_set_id == self.question_set.id).one_or_none())
 
 class SessionTests(unittest.TestCase):
     def test_login(self):
