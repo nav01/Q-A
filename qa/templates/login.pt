@@ -1,8 +1,17 @@
 <html metal:use-macro="load: ./main.pt">
-    <head metal:fill-slot="head">
-        <tal metal:use-macro ="load: ./head.pt"/>
-    </head>
     <div class="container" metal:fill-slot="content">
-        ${structure:form}
+        <head metal:fill-slot="head">
+            <link rel="stylesheet" href="${request.static_url('qa:css/form.css')}">
+        </head>
+        <div class="row form-header">
+            <div class="row col-lg-4 col-lg-offset-4">
+                <h2>Login</h2>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-lg-4 col-lg-offset-4">
+                ${structure:form}
+            </div>
+        </div>
     </div>
 </html>

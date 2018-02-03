@@ -1,0 +1,39 @@
+body.dragging, body.dragging * {
+  cursor: move !important;
+}
+
+.dragged {
+  position: absolute;
+  opacity: 0.5;
+  z-index: 2000;
+}
+
+ol.sortable li.placeholder {
+  position: relative;
+  /** More li styles **/
+}
+ol.sortable li.placeholder:before {
+  position: absolute;
+  /** Define arrowhead **/
+}
+.qr-success, .qr-failure {
+    display: none;
+}
+
+.delete-form {
+    display: inline;
+}
+
+.question {
+    margin-top: 15px;
+    margin-bottom: 15px;
+}
+
+
+#question-list {
+    padding-left: 15px;
+}
+
+#question-set-container {
+    margin-bottom: 15px;
+}

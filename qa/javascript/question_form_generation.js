@@ -15,26 +15,25 @@ $(document).ready(function(){
         visibleForm = {style:{display:null}}; //Dummy initial 'form'
     }
 
-    $('#question-form-request').submit(function(e){
+    $('.question-type').click(function(e){
         e.preventDefault();
-        var form = this;
-        var questionType = $(form).find('#select-question-type').val();
+        var link = this;
+        var questionType = $(this).attr('data-type');
         if (formCache[questionType]) {
             $(visibleForm).hide();
             visibleForm = formCache[questionType];
             $(visibleForm).show();
         } else {
-            console.log($(form).serialize());
             $.ajax({
                 type: 'GET',
-                url: $(form).attr('action'),
-                data: $(form).serialize(),
+                url: $(link).attr('href'),
+                data: {type: questionType, question_set_id: window.location.pathname.split('/')[2]}
             }).done(function(data) {
-                var div ='<div id="form-' + questionType + '">';
+                var div ='<div class="row col-lg-8 col-lg-offset-2" id="form-' + questionType + '">';
                 $(visibleForm).hide();
                 visibleForm = $(div + data + '</div>');
                 formCache[questionType] = visibleForm;
-                $('.container').append(visibleForm);
+                $('#question-form-generation').append(visibleForm);
             }).fail(function() {
                 alert('failure');
             });

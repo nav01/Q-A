@@ -1,20 +1,14 @@
 <html metal:use-macro="load: ./main.pt">
     <head metal:fill-slot="head">
-        <tal metal:use-macro ="load: ./head.pt"/>
         <script src="${request.static_url('qa:javascript/question_form_generation.js')}"></script>
         <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
         <script src="${request.static_url('qa:javascript/jquery-sortable.js')}"></script>
+        <link rel="stylesheet" href="${request.static_url('qa:css/question_creation.css')}">
     </head>
     <div class="container" metal:fill-slot="content">
-        <form id="question-form-request" action="/question_creation_form" method="GET">
-            <select name='type' id="select-question-type">
-                <tal:block repeat="choice question_choices">
-                    <option value="${choice[0]}">${choice[1]}</option>
-                </tal:block>
-            </select>
-            <input type="submit">
-        </form>
-        <div tal:condition="exists: form" id="form-${form[0]}">
+        <tal metal:use-macro="load: ./question_form_generation.pt">
+        <!-- In the case of a form validation failure, it is rerendered here. -->
+        <div tal:condition="exists: form" class="row col-lg-8 col-lg-offset-2" id="form-${form[0]}">
             ${structure: form[1]}
         </div>
     </div>

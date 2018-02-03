@@ -1,7 +1,19 @@
 <!DOCTYPE html>
 <html lang="en" xmlns:metal="http://xml.zope.org/namespaces/metal">
-<head metal:define-slot="head">
+<head>
+    <title>${page_title}</title>
+    <script
+      src="https://code.jquery.com/jquery-3.2.1.js"
+      integrity="sha256-DZAnKJ/6XZ9si04Hgrsxu/8s717jcIzLy3oi35EouyE="
+      crossorigin="anonymous"></script>
+    <script src="${request.static_url('qa:javascript/navbar.js')}"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
+    integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"
+    integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+    <tal:block metal:define-slot="head">
 
+    </tal:block>
 </head>
 <body>
     <nav class="navbar navbar-default">
@@ -10,10 +22,13 @@
           <a class="navbar-brand" href="#">QA</a>
         </div>
         <ul class="nav navbar-nav">
-            <li class="active"><a href="#">Register</a></li>
+            <tal:block condition="not: exists: username">
+                <li id="register"><a href="/register">Register</a></li>
+                <li id="login"><a href="/login">Login</a></li>
+            </tal:block>
         </ul>
-        <ul tal:condition="exists: user" class="nav navbar-nav pull-right">
-            <li><a href="/profile">${user.username}</a></li>
+        <ul tal:condition="exists: username" class="nav navbar-nav pull-right">
+            <li><a href="/profile">${username}</a></li>
             <li><a href="/logout">Logout</a></li>
         </ul>
       </div>

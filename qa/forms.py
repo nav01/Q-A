@@ -28,10 +28,10 @@ def get_question_creation_schema(post):
     return (schema, question_type)
 
 def get_question_select_options():
+    link = '/question_creation_form'
     return [
-        ('', '--Select--'),
-        (models.QuestionType.mcq.name, 'Multiple Choice'),
-        (models.QuestionType.tf.name, 'True False'),
+        (link, models.QuestionType.mcq.name, 'Multiple Choice'),
+        (link, models.QuestionType.tf.name, 'True False'),
     ]
 
 #Deform doesn't seem to play nicely with dynamically building schemas.
@@ -140,11 +140,11 @@ class QuestionSetsSchema(CSRFSchema):
 
     @colander.deferred
     def set_select_choices(node, kw):
-        return deform.widget.SelectWidget(values=kw.get('choices'))
+        return deform.widget.SelectWidget(css_class='topic-choices', values=kw.get('choices'))
 
     @colander.deferred
     def set_select_validator(node,kw):
-        return colander.OneOf([x[0] for x in kw.get('choices')])
+        return colander.Function(lambda value: value in [x[0] for x in kw.get('choices')], msg='Chosen topic does not exist')
 
     topics = colander.SchemaNode(
         colander.Int(),
@@ -306,12 +306,22 @@ class RegistrationSchema(CSRFSchema):
         colander.String(),
         name = models.User.username.name,
         validator = __meets_username_requirements,
+        description= """
+            Username must be between 4 and 25 characters and cannot start with
+            a number
+        """,
     )
     password = colander.SchemaNode(
         colander.String(),
         name = models.User.password.name,
         widget = deform.widget.CheckedPasswordWidget(),
         validator = __meets_password_requirements,
+        description = """
+            Password must be between 8 and 50 characters and contain  at least
+            the following:
+            one uppercase letter, one lowercase letter, a number, and a special
+            character.
+        """
     )
 class LoginSchema(CSRFSchema):
     username = colander.SchemaNode(

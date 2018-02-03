@@ -1,118 +1,89 @@
 <html metal:use-macro="load: ./main.pt">
     <head metal:fill-slot="head">
-        <tal metal:use-macro="load: ./head.pt"/>
         <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
-        <script src="${request.static_url('qa:javascript/profile_page.js')}"></script>
+        <script src="${request.static_url('qa:javascript/show_hide.js')}"></script>
         <script src="${request.static_url('qa:javascript/delete.js')}"></script>
+        <script src="${request.static_url('qa:javascript/profile.js')}"></script>
         <script src="${request.static_url('qa:javascript/jquery-sortable.js')}"></script>
-        <style type="text/css">
-            .chevron-collapse{
-                float:left;
-            }
-            .just-padding {
-                padding: 15px;
-            }
-
-            .list-group.list-group-root {
-                padding: 0;
-                overflow: hidden;
-            }
-
-            .list-group.list-group-root .list-group {
-                margin-bottom: 0;
-            }
-            .list-group.list-group-root .list-group-item {
-                border-radius: 0;
-                border-width: 1px 0 0 0;
-            }
-
-            .list-group.list-group-root > .list-group-item:first-child {
-                border-top-width: 0;
-            }
-
-            .list-group.list-group-root > .list-group > .list-group-item {
-                padding-left: 30px;
-            }
-
-            .list-group.list-group-root > .list-group > .list-group > .list-group-item {
-                padding-left: 45px;
-            }
-
-            .list-group-item .glyphicon {
-                margin-right: 5px;
-            }
-        </style>
+        <link rel="stylesheet" href="${request.static_url('qa:css/profile.css')}">
     </head>
     <div class="container" metal:fill-slot="content">
-        <div tal:condition="exists: errors" class="alert alert-danger">
+        <div tal:condition="exists: errors" class="col-lg-6 col-lg-offset-3 alert alert-danger text-center">
             <ul>
                 <tal:block repeat="error errors">
                     <li tal:content="error"></li>
                 </tal:block>
             </ul>
         </div>
-        <div class="list-group list-group-root well" tal:condition="python:user.topics">
+        <!-- User Content -->
+        <h2 class="row col-lg-8 col-lg-offset-2 text-center">Your Topics</h2>
+        <div class="row col-lg-8 col-lg-offset-2 list-group list-group-root well" id="resource-master-container" tal:condition="python:user.topics">
+            <!-- Topic Information -->
             <tal:block repeat="topic user.topics">
-                <div class="resource-container">
+                <div class="resource-container" data-name="${topic.title}" data-type="topic">
                     <a href="#topic-${repeat['topic'].index}" class="list-group-item" data-toggle="collapse">
                         <i class="glyphicon glyphicon-chevron-right chevron-collapse"></i>
                         <p tal:content="topic.title"/>
                     </a>
-                    <a href="/topic/${topic.id}/edit" role="button" class="btn btn-primary btn-sm">Edit Title</a>
+                    <a href="/topic/${topic.id}/edit" role="button" class="btn btn-primary btn-xs">Edit Title</a>
                     <form class="delete-form" action="/topic/${topic.id}/delete" method="POST">
                         <input type="hidden" name="csrf_token" value=${csrf_token}>
-                        <input type="submit" value="Delete" class="btn btn-primary btn-sm">
+                        <input type="submit" value="Delete" class="btn btn-primary btn-xs delete-form-button">
                     </form>
+                    <!-- Question Set Information -->
                     <div class="list-group collapse" id="topic-${repeat['topic'].index}" tal:condition="exists: topic.question_sets">
                         <tal:block repeat="question_set topic.question_sets">
-                            <div class='resource-container'>
-                                <a class="list-group-item">
-                                    <p tal:content="question_set.description"/>
-                                    <!-- These link-like buttons will not work if moving away from bootstrap -->
-                                    <a href="set/${question_set.id}/create_question" role="button" class="btn btn-primary btn-sm">Create Question</a>
-                                    <a href="/set/${question_set.id}/answer" role="button" class="btn btn-primary btn-sm">Answer Set</a>
-                                    <a href="/set/${question_set.id}/view" role="button" class="btn btn-primary btn-sm">View Questions</a>
-                                    <a href="/set/${question_set.id}/edit" role="button" class="btn btn-primary btn-sm">Edit Description</a>
-                                    <form class="delete-form" action="/set/${question_set.id}/delete" method="POST">
-                                        <input type="hidden" name="csrf_token" value=${csrf_token}>
-                                        <input type="submit" value="Delete" class="btn btn-primary btn-sm">
-                                    </form>
-                                </a>
+                            <div class="question-set resource-container list-group-item" data-name="" data-type="question_set">
+                                <p tal:content="question_set.description"/>
+                                <!-- These link-like buttons will not work if moving away from bootstrap -->
+                                <a href="set/${question_set.id}/create_question" role="button" class="btn btn-primary btn-xs">Create Question</a>
+                                <a href="/set/${question_set.id}/answer" role="button" class="btn btn-primary btn-xs">Answer Set</a>
+                                <a href="/set/${question_set.id}/view" role="button" class="btn btn-primary btn-xs">View Questions</a>
+                                <a href="/set/${question_set.id}/edit" role="button" class="btn btn-primary btn-xs">Edit Description</a>
+                                <form class="delete-form" action="/set/${question_set.id}/delete" method="POST">
+                                    <input type="hidden" name="csrf_token" value=${csrf_token}>
+                                    <input type="submit" value="Delete" class="btn btn-primary btn-xs delete-form-button">
+                                </form>
                             </div>
                         </tal:block>
                     </div>
                 </div>
             </tal:block>
         </div>
-        <div id="div-show-add-topics">
-            <button type="button" id="button-show-add-topics-form" class="btn btn-xs">
-                <i class="glyphicon glyphicon-plus"></i>
-            </button>
-            <label>Add Topic</label>
+        <!-- Forms to create topics and question sets. -->
+        <!-- Topics form -->
+        <div>
+            <div class="row col-lg-8 col-lg-offset-2" id="div-show-add-topics">
+                <button type="button" id="button-show-add-topics-form" class="btn btn-xs">
+                    <i class="glyphicon glyphicon-plus"></i>
+                </button>
+                <label>Add Topic(s)</label>
+            </div>
+            <div class="row col-lg-8 col-lg-offset-2" id="div-hide-add-topics">
+                <button type="button" id="button-hide-add-topics-form" class="btn btn-xs">
+                    <i class="glyphicon glyphicon-minus"></i>
+                </button>
+            </div>
+            <div class="row col-lg-8 col-lg-offset-2" id="div-add-topics-form">
+                ${structure:add_topic_form}
+            </div>
         </div>
-        <div id="div-hide-add-topics" style="display: none">
-            <button type="button" id="button-hide-add-topics-form" class="btn btn-xs">
-                <i class="glyphicon glyphicon-minus"></i>
-            </button>
-        </div>
-        <div id="div-add-topics-form" style="display: none">
-            ${structure:add_topic_form}
-        </div>
-        <tal:block condition="python: user.topics">
-            <div id="div-show-add-question-set">
+        <!-- Question Set Form -->
+        <div id="new-question-sets" tal:condition="python: user.topics">
+            <div class="row col-lg-8 col-lg-offset-2" id="div-show-add-question-set">
                 <button type="button" id="button-show-add-question-set-form" class="btn btn-xs">
                     <i class="glyphicon glyphicon-plus"></i>
                 </button>
-                <label>Add Question Set</label>
+                <label>Add Question Set(s)</label>
             </div>
-            <div id="div-hide-add-question-set" style="display: none">
+            <div class="row col-lg-8 col-lg-offset-2" id="div-hide-add-question-set">
                 <button type="button" id="button-hide-add-question-set-form" class="btn btn-xs">
                     <i class="glyphicon glyphicon-minus"></i>
                 </button>
             </div>
-            <div id="div-add-question-set-form" style="display: none">
+            <div class="row col-lg-8 col-lg-offset-2" id="div-add-question-set-form">
                 ${structure:add_question_set_form}
             </div>
-        </tal:block>
+        </div>
     </div>
 </html>

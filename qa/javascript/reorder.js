@@ -34,15 +34,19 @@ $(document).ready(function () {
         $.ajax({
             type: 'POST',
             url: $(this).attr('action'),
-            data: formData,
+            data: formData + '&ajax=true',
         }).done(function(){
             $('.qr-success').show();
             $('.qr-success').fadeOut(10000);
             $('.qr-failure').hide();
-        }).fail(function(){
-            $('.qr-success').hide();
-            $('.qr-failure').show();
-            $('.qr-failure').fadeOut(10000);
+        }).fail(function(xhr, statusText, errorThrown){
+            if (xhr.status == '401'){
+                window.location = xhr.responseText;
+            } else {
+                $('.qr-success').hide();
+                $('.qr-failure').show();
+                $('.qr-failure').fadeOut(10000);
+            }
         });
     });
 

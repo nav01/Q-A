@@ -163,6 +163,7 @@ class QuestionViewTests(DbTestCase):
         self.create_db()
         self.request = testing.DummyRequest()
         self.request.db = self.db
+        self.request.username = 'bob'
         self.request.matchdict['question_set_id'] = 1
 
         self.user = User(id=1, username='user', password='pass')
@@ -232,6 +233,7 @@ class QuestionViewTests(DbTestCase):
         from .views import QuestionViews
 
         self.request.method='GET'
+        self.request.username = 'bob'
         view = QuestionViews(self.request)
         view.setup()
         self.request.method = 'POST'

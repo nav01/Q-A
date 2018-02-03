@@ -213,19 +213,18 @@ class Question(Base):
     }
 
     REPORT_TEMPLATE = '''
-        <h4>{}</h4>
-        <p>{}</p>
-        <p>{}</p>
-        <i class="glyphicon glyphicon {}"></i>
+        <h4>{} <i class="glyphicon glyphicon {}"></i></h4>
+        <p>Correct Answer: {}</p>
+        <p>Your Answer: {}</p>
     '''
 
     @classmethod
     def report(cls, description, correct_answer, chosen_answer):
         t = cls.REPORT_TEMPLATE.format(
             description,
+            {},
             correct_answer,
             chosen_answer,
-            {},
         )
         if chosen_answer == correct_answer:
             return t.format('glyphicon-ok')

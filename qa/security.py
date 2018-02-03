@@ -1,4 +1,4 @@
-from pyramid.httpexceptions import HTTPFound, HTTPForbidden
+from pyramid.httpexceptions import HTTPFound, HTTPForbidden, HTTPUnauthorized
 
 from .models import Topic, QuestionSet, Question
 
@@ -22,15 +22,24 @@ class Session:
     def logout(session):
         session.clear()
 
+    def username(session):
+        return session[Session.__USER]
+
     def user_id(session):
         return session[Session.__USER_DB_ID]
 
 def requires_logged_in(wrapped):
     def wrapper(context,request):
         if Session.logged_in(request.session):
+            request.username = Session.username(request.session)
             return wrapped(context,request)
         else:
-            return HTTPFound(request.route_url('login'))
+            #Return a response so failed ajax requests can be redirected to
+            #the login page.
+            if 'ajax' in request.POST or 'ajax' in request.GET:
+                return HTTPUnauthorized(body=request.route_url('login'))
+            else:
+                return HTTPFound(request.route_url('login'))
     return wrapper
 
 def requires_not_logged_in(wrapped):

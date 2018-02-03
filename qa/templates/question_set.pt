@@ -1,33 +1,14 @@
 <html metal:use-macro="load: ./main.pt">
     <head metal:fill-slot="head">
-        <tal metal:use-macro="load: ./head.pt"/>
         <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
         <script src="${request.static_url('qa:javascript/jquery-sortable.js')}"></script>
         <script src="${request.static_url('qa:javascript/delete.js')}"></script>
         <script src="${request.static_url('qa:javascript/reorder.js')}"></script>
-        <style type="text/css">
-            body.dragging, body.dragging * {
-              cursor: move !important;
-            }
-
-            .dragged {
-              position: absolute;
-              opacity: 0.5;
-              z-index: 2000;
-            }
-
-            ol.sortable li.placeholder {
-              position: relative;
-              /** More li styles **/
-            }
-            ol.sortable li.placeholder:before {
-              position: absolute;
-              /** Define arrowhead **/
-            }
-            .qr-success, .qr-failure {
-                display: none;
-            }
-        </style>
+        <script src="${request.static_url('qa:javascript/question_form_generation.js')}"></script>
+        <script src="${request.static_url('qa:javascript/show_hide.js')}"></script>
+        <script src="${request.static_url('qa:javascript/question_set.js')}"></script>
+        <link rel="stylesheet" href="${request.static_url('qa:css/question_set.css')}">
+        <link rel="stylesheet" href="${request.static_url('qa:css/question_creation.css')}">
     </head>
     <div class="container" metal:fill-slot="content">
         <div tal:condition="exists: errors" class="alert alert-danger">
@@ -37,16 +18,16 @@
                 </tal:block>
             </ul>
         </div>
-        <div>
-            <h1>${question_set_description}</h1>
+        <div class="col-lg-8 col-lg-offset-2" id="question-set-container">
+            <h1 class="text-center">${question_set_description}</h1>
             <ol class="sortable" id="question-list">
                 <tal:block repeat="question questions">
-                    <li class="resource-container" id="reorderable-${question.id}">
+                    <li class="resource-container question" id="reorderable-${question.id}" data-name="" data-type="question">
                         <p>${question.description}</p>
-                        <a href="/set/${question_set_id}/question/${question.id}/edit" role="button" class="btn btn-primary btn-sm">Edit</a>
+                        <a href="/set/${question_set_id}/question/${question.id}/edit" role="button" class="btn btn-primary btn-xs">Edit</a>
                         <form class="delete-form" action="/set/${question_set_id}/question/${question.id}/delete">
                             <input type="hidden" name="csrf_token" value=${csrf_token}>
-                            <input type="submit" value="Delete" class="btn btn-primary btn-sm">
+                            <input type="submit" value="Delete" class="btn btn-primary btn-xs">
                         </form>
                     </li>
                 </tal:block>
@@ -58,11 +39,23 @@
                 </form>
             </tal:block>
         </div>
-        <div class="qr-success alert alert-success" role="alert">
+        <div class="col-lg-8 col-lg-offset-2 qr-success alert alert-success reorder-status" role="alert">
             <p><strong>Success!</strong> Your questions have been reordered.</p>
         </div>
-        <div class="qr-failure alert alert-danger" role="alert">
+        <div class="col-lg-8 col-lg-offset-2 qr-failure alert alert-danger reorder-status" role="alert">
             <p><strong>Something went wrong.</strong> Refresh the page and try again.</p>
         </div>
+        <div class="row col-lg-8 col-lg-offset-2" id="div-show-add-question">
+            <button type="button" id="button-show-add-question" class="btn btn-xs">
+                <i class="glyphicon glyphicon-plus"></i>
+            </button>
+            <label>Add Question(s)</label>
+        </div>
+        <div class="row col-lg-8 col-lg-offset-2" id="div-hide-add-question">
+            <button type="button" id="button-hide-add-question" class="btn btn-xs">
+                <i class="glyphicon glyphicon-minus"></i>
+            </button>
+        </div>
+        <tal metal:use-macro="load: ./question_form_generation.pt">
     </div>
 </html>

@@ -39,8 +39,9 @@ def delete_resource(request, resource_attr):
     return HTTPNoContent()
 
 class QuestionSetState:
-    def __init__(self, questions, question_set_id):
+    def __init__(self, questions, question_set_id, set_name = ''):
         if questions:
+            self.set_name = set_name
             self.question_set_id = question_set_id
             self.question_list = questions
             self.answers = []
@@ -84,26 +85,24 @@ class TopicViews:
         edit_form = Form(self.request.topic.edit_schema().bind(request=self.request), buttons=('save',))
         return {
             'page_title': 'Edit Topic',
+            'username': self.request.username,
             'edit_form': edit_form.render(self.request.topic.__dict__)
         }
 
     @view_config(route_name='edit_topic', renderer='templates/topic_edit.pt', request_method='POST', decorator=(requires_logged_in, requires_topic_owner))
     def edit_topic_post(self):
-        if 'save' in self.request.POST:
-            template_vars = {'page_title': 'Edit Topic'}
-            try:
-                edit_form = Form(self.request.topic.edit_schema().bind(request=self.request), buttons=('save',))
-                appstruct = edit_form.validate(self.request.POST.items())
-                self.request.topic.edit(appstruct, self.request.db)
-                return HTTPFound(self.request.route_url('profile'))
-            except ValueError as e:
-                exc = colander.Invalid(edit_form.widget, str(e))
-                edit_form.widget.handle_error(edit_form, exc)
-                template_vars['edit_form'] = edit_form.render()
-            except ValidationFailure as e:
-                template_vars['edit_form'] = e.render()
-        else:
+        template_vars = {'page_title': 'Edit Topic', 'username': self.request.username}
+        try:
+            edit_form = Form(self.request.topic.edit_schema().bind(request=self.request), buttons=('save',))
+            appstruct = edit_form.validate(self.request.POST.items())
+            self.request.topic.edit(appstruct, self.request.db)
             return HTTPFound(self.request.route_url('profile'))
+        except ValueError as e:
+            exc = colander.Invalid(edit_form.widget, str(e))
+            edit_form.widget.handle_error(edit_form, exc)
+            template_vars['edit_form'] = edit_form.render()
+        except ValidationFailure as e:
+            template_vars['edit_form'] = e.render()
         return template_vars
 
     @view_config(route_name='delete_topic', decorator=(requires_logged_in, requires_topic_owner))
@@ -121,9 +120,11 @@ class QuestionSetViews:
 
         template_vars = {
             'page_title': 'Viewing Question Set',
+            'username': self.request.username,
             'question_set_description': self.request.question_set.description,
             'question_set_id': self.request.question_set.id,
             'questions': questions,
+            'question_choices': forms.get_question_select_options(),
             'csrf_token': self.request.session.get_csrf_token(),
         }
         if question_ids:
@@ -149,13 +150,14 @@ class QuestionSetViews:
         edit_form = Form(self.request.question_set.edit_schema().bind(request=self.request), buttons=('save',))
         return {
             'page_title': 'Edit Question Set',
+            'username': self.request.username,
             'edit_form': edit_form.render(self.request.question_set.__dict__)
         }
 
     @view_config(route_name='edit_question_set', renderer='templates/question_set_edit.pt', request_method='POST', decorator=(requires_logged_in, requires_question_set_contributor))
     def edit_set_post(self):
         if 'save' in self.request.POST:
-            template_vars = {'page_title': 'Edit Question Set'}
+            template_vars = {'page_title': 'Edit Question Set', 'username': self.request.username}
             try:
                 edit_form = Form(self.request.question_set.edit_schema().bind(request=self.request), buttons=('save',))
                 appstruct = edit_form.validate(self.request.POST.items())
@@ -186,19 +188,24 @@ class QuestionViews:
     def get_question_creation_form(self):
         try:
             schema, _ = forms.get_question_creation_schema(self.request.GET)
-            form = Form(schema.bind(request=self.request), buttons=('create',), action='')
+            action = self.request.route_path('create_question', question_set_id=self.request.GET['question_set_id'])
+            form = Form(schema.bind(request=self.request), buttons=('create',), action=action)
             return Response(body=form.render())
         except Exception as _:
             return HTTPClientError()
 
     @view_config(route_name='create_question', renderer='templates/question_creation.pt', decorator=(requires_logged_in, requires_question_set_contributor))
     def create_question(self):
-        question_choices = forms.get_question_select_options()
-        template_vars = {'page_title': 'Create Question', 'question_choices': question_choices}
+        template_vars = {
+            'page_title': 'Create Question',
+            'username': self.request.username,
+            'question_choices': forms.get_question_select_options(),
+        }
         if self.request.method == 'POST':
             try:
                 schema, question_type = forms.get_question_creation_schema(self.request.POST)
-                form = Form(schema.bind(request=self.request), buttons=('create',), action='')
+                action = self.request.route_path('create_question', question_set_id=self.request.question_set.id)
+                form = Form(schema.bind(request=self.request), buttons=('create',), action=action)
                 appstruct = form.validate(self.request.POST.items())
                 question_set_id = self.request.matchdict['question_set_id']
                 Question.create(question_set_id, appstruct, self.request.db)
@@ -216,12 +223,13 @@ class QuestionViews:
         edit_form = Form(self.request.question.edit_schema().bind(request=self.request), buttons=('save',))
         return {
             'page_title': 'Edit Question',
+            'username': self.request.username,
             'edit_form': edit_form.render(self.request.question.__dict__),
         }
 
     @view_config(route_name='edit_question', renderer='templates/question_edit.pt', request_method='POST', decorator=(requires_logged_in, requires_question_contributor))
     def edit_question_post(self):
-        template_vars = {'page_title': 'Edit Question'}
+        template_vars = {'page_title': 'Edit Question', 'username': self.request.username}
         if 'save' in self.request.POST:
             edit_form = Form(self.request.question.edit_schema().bind(request=self.request), buttons=('save',))
             try:
@@ -249,10 +257,11 @@ class QuestionViews:
     @view_config(route_name='answer_question_set', renderer='templates/answer.pt', request_method='GET', decorator=(requires_logged_in, requires_question_set_contributor))
     def setup(self):
         question_set_id = self.request.question_set.id
+        set_name = self.request.question_set.description
         question_set = self.request.question_set.get_questions(self.request.db)
         try:
-            template_vars = {'page_title':'Answer'} #Need better title.
-            self.request.session[Session.QUESTION_STATE] = QuestionSetState(question_set, question_set_id)
+            template_vars = {'page_title':'Answer', 'username': self.request.username} #Need better title.
+            self.request.session[Session.QUESTION_STATE] = QuestionSetState(question_set, question_set_id, set_name)
             question = self.request.session[Session.QUESTION_STATE].get_current_question()
             schema = question.answer_schema(self.request)
             question_form = Form(schema, buttons=('submit',))
@@ -265,7 +274,7 @@ class QuestionViews:
     @view_config(route_name='answer_question_set', renderer='templates/answer.pt', request_method='POST', decorator=(requires_logged_in, requires_question_set_contributor))
     def answer(self):
         if 'submit' in self.request.POST and Session.QUESTION_STATE in self.request.session:
-            template_vars = {'page_title':'Answer'}
+            template_vars = {'page_title':'Answer', 'username': self.request.username}
             try:
                 #Store the previous question's answer.
                 question = self.request.session[Session.QUESTION_STATE].get_current_question()
@@ -292,8 +301,9 @@ class QuestionViews:
     #state in the session.
     @view_config(route_name='report', renderer='templates/report.pt',decorator=(requires_logged_in,))
     def report(self):
-        template_vars = {'page_title':'Report'}
+        template_vars = {'page_title':'Report', 'username': self.request.username}
         if Session.QUESTION_STATE in self.request.session and self.request.session[Session.QUESTION_STATE].ready_for_report():
+            template_vars['set_name'] = self.request.session[Session.QUESTION_STATE].set_name
             template_vars['report'] = self.request.session[Session.QUESTION_STATE].get_report()
             del self.request.session[Session.QUESTION_STATE]
             return template_vars
@@ -313,6 +323,7 @@ class UserViews:
         template_vars = {
             'csrf_token': self.request.session.get_csrf_token(),
             'page_title':'Profile',
+            'username': self.request.username,
             'user':user,
         }
         schema = forms.TopicsSchema().bind(request=self.request)
@@ -350,7 +361,7 @@ class UserViews:
                 rendered_form = e.render()
         else:
             rendered_form = form.render()
-        return {'page_title':'Register','form':rendered_form}
+        return {'page_title':'Register', 'form':rendered_form}
 
     @view_config(route_name='login', renderer='templates/login.pt', decorator=(requires_not_logged_in,))
     def login(self):
@@ -393,7 +404,7 @@ class UserViews:
                 add_topic_form, add_question_set_form = self.render_profile_forms(add_topic_form, add_question_set_form)
             except ValidationFailure as e:
                 add_topic_form, add_question_set_form = self.render_profile_forms(e, add_question_set_form)
-        elif 'add_question_sets' in self.request.POST:
+        elif 'add_question_sets' in self.request.POST and add_question_set_form:
             try:
                 appstruct = add_question_set_form.validate(self.request.POST.items())
                 QuestionSet.create(appstruct,self.request.db)
@@ -404,6 +415,12 @@ class UserViews:
                 add_topic_form, add_question_set_form = self.render_profile_forms(add_topic_form, add_question_set_form)
             except ValidationFailure as e:
                 add_topic_form, add_question_set_form = self.render_profile_forms(add_topic_form, e)
+        #Shouldn't ever execute unless POSTed through some other means besides the interface, and then
+        #only if something goes wrong.
+        else:
+            add_topic_form = add_topic_form.render()
+            if add_question_set_form:
+                add_question_set_form = add_question_set_form.render()
 
         template_vars['add_topic_form'] = add_topic_form
         if add_question_set_form:

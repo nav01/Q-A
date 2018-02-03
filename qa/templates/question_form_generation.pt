@@ -1,0 +1,13 @@
+<div id="question-form-generation">
+    <div class="col-lg-4 col-lg-offset-4 text-center">
+        <button type="button" class="center-me btn btn-primary dropdown-toggle" data-toggle="dropdown">
+            Choose A Question Type
+            <span class="caret"></span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-center">
+            <tal:block repeat="choice question_choices">
+                <li><a class="question-type dropdown-item" data-type=${choice[1]} href=${choice[0]}>${choice[2]}</a></li>
+            </tal:block>
+        </ul>
+    </div>
+</div>

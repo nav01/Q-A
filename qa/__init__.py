@@ -39,4 +39,5 @@ def main(global_config, **settings):
     config.add_route('delete_question', '/set/{question_set_id}/question/{question_id}/delete')
     config.scan('.views')
     config.add_static_view(name='javascript', path='qa:javascript')
+    config.add_static_view(name='css', path='qa:css')
     return config.make_wsgi_app()
