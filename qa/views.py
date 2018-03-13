@@ -124,7 +124,7 @@ class QuestionSetViews:
             'question_set_description': self.request.question_set.description,
             'question_set_id': self.request.question_set.id,
             'questions': questions,
-            'question_choices': forms.get_question_select_options(),
+            'question_choices': forms.get_question_select_options(self.request.route_url('question_creation_form')),
             'csrf_token': self.request.session.get_csrf_token(),
         }
         if question_ids:
@@ -199,7 +199,7 @@ class QuestionViews:
         template_vars = {
             'page_title': 'Create Question',
             'username': self.request.username,
-            'question_choices': forms.get_question_select_options(),
+            'question_choices': forms.get_question_select_options(self.request.route_url('question_creation_form')),
         }
         if self.request.method == 'POST':
             try:

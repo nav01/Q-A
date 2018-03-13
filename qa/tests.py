@@ -29,9 +29,6 @@ class DbTestCase(unittest.TestCase):
         Base.metadata.drop_all(self.sqlalchemy_engine)
 
 class UserViewTests(DbTestCase):
-    def __init__(self, *args, **kwargs):
-        DbTestCase.__init__(self,*args,**kwargs)
-
     def setUp(self):
         self.config = testing.setUp()
         self.create_db()
@@ -147,9 +144,6 @@ class UserViewTests(DbTestCase):
         self.assertEqual(response.location,"http://example.com/profile", "Valid password.")
 
 class QuestionViewTests(DbTestCase):
-    def __init__(self, *args, **kwargs):
-        DbTestCase.__init__(self,*args,**kwargs)
-
     #Related to answering a question set.
     def setUp(self):
         from .models import User, Topic, QuestionSet, MultipleChoiceQuestion as MCQ
@@ -244,9 +238,6 @@ class QuestionViewTests(DbTestCase):
 
 #Test the User class from models.py
 class UserTests(DbTestCase):
-    def __init__(self, *args, **kwargs):
-        DbTestCase.__init__(self, *args, **kwargs)
-
     def setUp(self):
         self.addCleanup(self.clear_db)
         self.config = testing.setUp()
@@ -296,9 +287,6 @@ class UserTests(DbTestCase):
 
 #Test the Topic class from models.py
 class TopicTests(DbTestCase):
-    def __init__(self, *args, **kwargs):
-        DbTestCase.__init__(self, *args, **kwargs)
-
     def setUp(self):
         from .models import User
 
@@ -381,12 +369,8 @@ class TopicTests(DbTestCase):
         topic.edit(values, self.db)
         self.assertEqual(topic.title, values['title'])
 
-
 #Test the QuestionSet class from models.py
 class QuestionSetTests(DbTestCase):
-    def __init__(self, *args, **kwargs):
-        DbTestCase.__init__(self, *args, **kwargs)
-
     def setUp(self):
         from .models import User
         from .models import Topic
@@ -544,9 +528,6 @@ class QuestionSetTests(DbTestCase):
         self.assertEqual(0, QuestionSet.last_question_order(question_set.id, self.db))
 
 class QuestionTests(DbTestCase):
-    def __init__(self, *args, **kwargs):
-        DbTestCase.__init__(self, *args, **kwargs)
-
     def setUp(self):
         from .models import User
         from .models import Topic
@@ -667,9 +648,6 @@ class QuestionTests(DbTestCase):
         self.assertFalse(self.db.query(Question).filter(Question.question_set_id == self.question_set.id).one_or_none())
 
 class MultipleChoiceQuestionTests(DbTestCase):
-    def __init__(self, *args, **kwargs):
-        DbTestCase.__init__(self, *args, **kwargs)
-
     def setUp(self):
         from .models import User
         from .models import Topic
@@ -767,9 +745,6 @@ class MultipleChoiceQuestionTests(DbTestCase):
         self.assertFalse(self.db.query(MCQ).filter(Question.id == question.id).one_or_none())
 
 class TrueFalseQuestionTests(DbTestCase):
-    def __init__(self, *args, **kwargs):
-        DbTestCase.__init__(self, *args, **kwargs)
-
     def setUp(self):
         from .models import User
         from .models import Topic
@@ -803,6 +778,134 @@ class TrueFalseQuestionTests(DbTestCase):
         self.clear_db()
         testing.tearDown()
 
+class MathQuestionTests(DbTestCase):
+    def setUp(self):
+        from .models import User
+        from .models import Topic
+        from .models import QuestionSet
+        from .models import MathQuestion
+        from .models import Accuracy
+
+        self.addCleanup(self.clear_db)
+        self.config = testing.setUp()
+        self.create_db()
+
+        self.user = User(username='user', password='password')
+        self.topic = Topic(title='Name', user_id=1)
+        self.question_set = QuestionSet(description='Desc', topic_id=1)
+        self.db.add_all([self.user, self.topic, self.question_set])
+        self.db.commit()
+        self.mq = {
+            'question_order': 0,
+            'description': 'test',
+            'correct_answer': 10,
+            'accuracy': Accuracy.exact,
+            'question_set_id': 1,
+        }
+
+    def tearDown(self):
+        self.clear_db()
+        testing.tearDown()
+
+    def test_both_unit_columns_or_neither_constraint(self):
+        from .models import MathQuestion
+        from sqlalchemy.exc import IntegrityError
+
+        question = MathQuestion(**self.mq)
+
+        #neither columns
+        try:
+            self.db.add(question)
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            self.fail('Both unit fields are empty.  Should succeed.')
+
+        #both columns
+        question.units = 'units'
+        question.units_given = True
+        try:
+            self.db.add(question)
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            self.fail('Both unit fields present.  Should succeed.')
+
+        #one unit column missing
+        question.units = None
+        try:
+            self.db.add(question)
+            self.db.commit()
+            self.fail('Expected IntegrityError to be thrown.')
+        except IntegrityError as e:
+            self.assertEqual(e.orig.diag.constraint_name, 'both_unit_columns_or_neither')
+
+    def test_accuracy_degree_must_be_specified_if_not_exact_constraint(self):
+        from .models import Accuracy, MathQuestion
+        from sqlalchemy.exc import IntegrityError
+
+        question = MathQuestion(**self.mq)
+
+        #specifying accuracy_degree when accuracy is exact
+        question.accuracy_degree = 5
+        try:
+            self.db.add(question)
+            self.db.commit()
+            self.fail('Expected IntegrityError to be raised.')
+        except IntegrityError as e:
+            self.db.rollback()
+            self.assertEqual(e.orig.diag.constraint_name, 'accuracy_degree_must_be_specified_if_not_exact')
+
+        #both columns present
+        question.accuracy = Accuracy.uncertainty
+        try:
+            self.db.add(question)
+            self.db.commit()
+        except Exception as e:
+            self.fail('Both accuracy (not exact) and degree are specified.  Should succeed.')
+
+        #degree not present
+        question.accuracy_degree = None
+        try:
+            self.db.add(question)
+            self.db.commit()
+            self.fail('Expected IntegrityError to be raised.')
+        except IntegrityError as e:
+            self.db.rollback()
+            self.assertEqual(e.orig.diag.constraint_name, 'accuracy_degree_must_be_specified_if_not_exact')
+
+    def test_compare_to_answer_for_report(self):
+        from .models import Accuracy, MathQuestion
+
+        question = MathQuestion(**self.mq)
+
+        #exact accuracy
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer})[0])
+        self.assertFalse(question._compare_to_answer_for_report({'answer': 1})[0])
+
+        #uncertainty
+        question.accuracy = Accuracy.uncertainty
+        question.correct_answer = 100 #answer explicit for clarity
+        question.accuracy_degree = 5
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer})[0])
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer + question.accuracy_degree})[0])
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer - question.accuracy_degree})[0])
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer + question.accuracy_degree - 2})[0])
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer - question.accuracy_degree + 2})[0])
+        self.assertFalse(question._compare_to_answer_for_report({'answer': question.correct_answer + question.accuracy_degree + .01})[0])
+        self.assertFalse(question._compare_to_answer_for_report({'answer': question.correct_answer - question.accuracy_degree - .01})[0])
+
+        #percentage
+        question.accuracy = Accuracy.percentage
+        question.correct_answer = 10 #make answer explicit here for clarity
+        question.accuracy_degree = 10
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer})[0])
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer + 1})[0])
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer - 1})[0])
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer + 0.5})[0])
+        self.assertTrue(question._compare_to_answer_for_report({'answer': question.correct_answer + 0.5})[0])
+        self.assertFalse(question._compare_to_answer_for_report({'answer': question.correct_answer + 1.01})[0])
+        self.assertFalse(question._compare_to_answer_for_report({'answer': question.correct_answer - 1.01})[0])
 
 class SessionTests(unittest.TestCase):
     def test_login(self):

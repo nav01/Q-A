@@ -6,13 +6,19 @@ import colander
 import deform
 import re
 
-#An exception used in models.py when exceptions that should have been prevented by
-#the corresponding form are raised.  This is unlikely to ever be thrown unless
-#an invalid key makes it past validation which makes the dictionary expansion
-#argument raise a type error, which occurs only in the 'create' methods.
-class FormError(ValueError):
-    def __init__(self):
-        super(FormError, self).__init__('An unexpected value was submitted.')
+TRUE_CHOICES = ('true', 1, '1')
+FALSE_CHOICES = ('false', 0, '0')
+BOOLEAN_RADIO_CHOICES = ((1, 'True'), (0, 'False'))
+
+def get_question_edit_schema(question_type):
+    if question_type == models.QuestionType.mcq:
+        return MultipleChoiceQuestion()
+    elif question_type == models.QuestionType.tf:
+        return TrueFalseQuestion()
+    elif question_type == models.QuestionType.math:
+        return MathQuestion()
+    else:
+        raise ValueError('Question Type Could Not Be Determined')
 
 def get_question_creation_schema(post):
     try:
@@ -22,22 +28,69 @@ def get_question_creation_schema(post):
     if question_type == models.QuestionType.mcq.name:
         schema = MultipleChoiceSchema()
     elif question_type == models.QuestionType.tf.name:
-        schema =  TrueFalseSchema()
+        schema = TrueFalseSchema()
+    elif question_type == models.QuestionType.math.name:
+        schema = MathQuestionSchema()
     else:
         raise ValueError('Question Type Could Not Be Determined')
     return (schema, question_type)
 
-def get_question_select_options():
-    link = '/question_creation_form'
+def get_question_select_options(url):
     return [
-        (link, models.QuestionType.mcq.name, 'Multiple Choice'),
-        (link, models.QuestionType.tf.name, 'True False'),
+        (url, models.QuestionType.mcq.name, 'Multiple Choice'),
+        (url, models.QuestionType.tf.name, 'True False'),
+        (url, models.QuestionType.math.name, 'Math'),
     ]
 
-#Deform doesn't seem to play nicely with dynamically building schemas.
+#Deform/colander doesn't seem to play nicely with dynamically building schemas.
 #Potentially slow method?
 def merge_schemas(parent, *children):
     parent.children = parent.children + list(itertools.chain(*[child.children for child in children]))
+
+#colander doesn't serialize None to colander.null for some types which is requied
+#for populating edit forms using sqlalchemy's __dict__ method without having
+#to make further modifications
+class NewColanderFloat(colander.Float):
+    def serialize(self, node, appstruct):
+        if appstruct is None:
+            return colander.null
+        else:
+            return super().serialize(node, appstruct)
+
+#colander.String serializes None to string literally which isn't desired behavior
+#for the method used to render deform forms described above
+class NewColanderString(colander.String):
+    def serialize(self, node, appstruct):
+        if appstruct is None:
+            return colander.null
+        else:
+            return super().serialize(node, appstruct)
+
+class MathAccuracy(colander.SchemaType):
+    def serialize(self, node, appstruct):
+        if appstruct is colander.null:
+            return colander.null
+        if not isinstance(appstruct, models.Accuracy):
+            raise colander.Invalid(node, '{} is not an Accuracy type.'.format(appstruct))
+        return appstruct.name
+
+    def deserialize(self, node, cstruct):
+        if cstruct is colander.null:
+            return colander.null
+        if not isinstance(cstruct, str):
+            raise Invalid(node, '{} is not a string.'.format(cstruct))
+        try:
+            return models.Accuracy[cstruct]
+        except KeyError as _:
+            raise colander.Invalid(node, '{} is not an Accuracy type.'.format(cstruct))
+
+#An exception used in models.py when exceptions that should have been prevented by
+#the corresponding form are raised.  This is unlikely to ever be thrown unless
+#an invalid key makes it past validation which makes the dictionary expansion
+#argument raise a type error, which occurs only in the 'create' methods.
+class FormError(ValueError):
+    def __init__(self):
+        super().__init__('An unexpected value was submitted.')
 
 #deform csrf protection
 class CSRFSchema(colander.MappingSchema):
@@ -244,9 +297,6 @@ class MultipleChoiceAnswer(CSRFSchema):
     )
 
 class TrueFalseQuestion(colander.Schema):
-    true_choices = ('true', 1, "1")
-    false_choices=('false', 0, "0")
-    choices = ((1, 'True'), (0, 'False'))
     description = colander.SchemaNode(
         colander.String(),
         name = models.TrueFalseQuestion.description.name,
@@ -254,10 +304,10 @@ class TrueFalseQuestion(colander.Schema):
         description = 'Enter the question description',
     )
     correct_answer = colander.SchemaNode(
-        colander.Boolean(true_choices=true_choices, false_choices=false_choices, false_val=0, true_val=1),
+        colander.Boolean(true_choices=TRUE_CHOICES, false_choices=FALSE_CHOICES, false_val=0, true_val=1),
         name = models.TrueFalseQuestion.correct_answer.name,
-        validator = colander.OneOf([x[0] for x in choices]),
-        widget = deform.widget.RadioChoiceWidget(values=choices, inline=True),
+        validator = colander.OneOf([x[0] for x in BOOLEAN_RADIO_CHOICES]),
+        widget = deform.widget.RadioChoiceWidget(values=BOOLEAN_RADIO_CHOICES, inline=True),
         title = 'Choose the correct answer',
     )
 class TrueFalseQuestions(colander.SequenceSchema):
@@ -280,12 +330,130 @@ class TrueFalseAnswer(CSRFSchema):
         return kw.get('question').description
 
     question = colander.SchemaNode(
-        colander.Boolean(true_choices=TrueFalseQuestion.true_choices, false_choices=TrueFalseQuestion.false_choices, false_val=0, true_val=1),
+        colander.Boolean(true_choices=TRUE_CHOICES, false_choices=FALSE_CHOICES, false_val=0, true_val=1),
         name = 'answer',
-        validator = colander.OneOf([x[0] for x in TrueFalseQuestion.choices]),
-        widget = deform.widget.RadioChoiceWidget(values=TrueFalseQuestion.choices, inline=True),
+        validator = colander.OneOf([x[0] for x in BOOLEAN_RADIO_CHOICES]),
+        widget = deform.widget.RadioChoiceWidget(values=BOOLEAN_RADIO_CHOICES, inline=True),
         title = set_title,
     )
+
+class MathQuestion(colander.Schema):
+    @classmethod
+    def both_unit_fields_or_neither(cls, form, value):
+        u = value['units']
+        u_g = value['units_given']
+        return not(u == u_g == None or u != None != u_g)
+    @classmethod
+    def accuracy_degree_must_be_specified_if_not_exact(cls, form, value):
+        accuracy = value['accuracy']
+        accuracy_degree = value['accuracy_degree']
+        return not ((accuracy_degree and accuracy and accuracy != models.Accuracy.exact) \
+            or (accuracy == models.Accuracy.exact and not accuracy_degree))
+    @classmethod
+    def validation(cls, form, value):
+        unit_fields_error = cls.both_unit_fields_or_neither(form, value)
+        accuracy_degree_error = cls.accuracy_degree_must_be_specified_if_not_exact(form, value)
+        error = False
+        exc = colander.Invalid(form, 'Some necessary fields are mising')
+        if unit_fields_error:
+            error = True
+            exc['units_given'] = 'Required if units are defined'
+        if accuracy_degree_error:
+            error = True
+            exc['accuracy_degree'] = 'Required if accuracy is other than exact'
+        if error:
+            raise exc
+
+    description = colander.SchemaNode(
+        colander.String(),
+        name = models.MathQuestion.description.name,
+        widget = deform.widget.RichTextWidget(delayed_load=True),
+        description = 'Enter the question description',
+    )
+    correct_answer = colander.SchemaNode(
+        colander.Float(),
+        name = models.MathQuestion.correct_answer.name,
+        widget = deform.widget.TextInputWidget(),
+        title = 'Enter the correct answer',
+    )
+    units = colander.SchemaNode(
+        NewColanderString(),
+        name = models.MathQuestion.units.name,
+        widget = deform.widget.TextInputWidget(css_class='units-input'),
+        description = '(Optional) Enter the units the answer must be in.',
+        missing = None,
+    )
+    units_given = colander.SchemaNode(
+        colander.Boolean(true_choices=TRUE_CHOICES, false_choices=FALSE_CHOICES, false_val=0, true_val=1),
+        name = models.MathQuestion.units_given.name,
+        description = 'Are the units given to the student?',
+        widget = deform.widget.RadioChoiceWidget(css_class='units-given-radio', values=((1, 'Yes'),(0, 'No')), inline=True),
+        missing = None,
+    )
+    accuracy = colander.SchemaNode(
+        MathAccuracy(),
+        name = models.MathQuestion.accuracy.name,
+        description = 'How accurate should the answer be?',
+        widget = deform.widget.SelectWidget(
+            css_class = 'math-accuracy-selector',
+            values = [('', '--Select--')] + [(val.name, val.name.replace('_',' ').title()) for val in models.Accuracy]
+        ),
+    )
+    accuracy_degree = colander.SchemaNode(
+        NewColanderFloat(),
+        name = models.MathQuestion.accuracy_degree.name,
+        description = 'The degree of accuracy.',
+        widget = deform.widget.TextInputWidget(css_class='math-accuracy-degree'),
+        missing = None,
+    )
+class MathQuestions(colander.SequenceSchema):
+    math_question = MathQuestion(validator=MathQuestion.validation)
+class MathQuestionSchema(CSRFSchema):
+    math_questions = MathQuestions(
+        name = models.MathQuestion.__table__.name,
+        widget = deform.widget.SequenceWidget(orderable=True),
+    )
+    question_type = colander.SchemaNode(
+        colander.String(),
+        name = models.Question.type.name,
+        default = models.QuestionType.math.name,
+        validator = colander.OneOf([models.QuestionType.math.name]),
+        widget = deform.widget.HiddenWidget(),
+    )
+class MathAnswerStructure(colander.Schema):
+    @colander.deferred
+    def units_given(node, kw):
+        question = kw.get('question')
+        if question.units and question.units_given:
+            return 'Units: ' + question.units
+        else:
+            return None
+
+    answer = colander.SchemaNode(
+        colander.Float(),
+        widget = deform.widget.TextInputWidget(),
+        description = units_given,
+    )
+    units = colander.SchemaNode(
+        colander.String(),
+        widget = deform.widget.TextInputWidget(),
+    )
+class MathAnswer(CSRFSchema):
+    def delete_units_if_not_present(node, kw):
+        question = kw.get('question')
+        if question.units and question.units_given:
+            del node['units']
+
+    @colander.deferred
+    def widget_title(node, kw):
+        return kw.get('question').description
+
+
+    answer = MathAnswerStructure(
+        title = widget_title,
+        after_bind = delete_units_if_not_present,
+    )
+
 
 class RegistrationSchema(CSRFSchema):
     def __meets_username_requirements(node,value):

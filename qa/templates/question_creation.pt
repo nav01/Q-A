@@ -3,6 +3,7 @@
         <script src="${request.static_url('qa:javascript/question_form_generation.js')}"></script>
         <script src="${request.static_url('deform:static/scripts/deform.js')}"></script>
         <script src="${request.static_url('qa:javascript/jquery-sortable.js')}"></script>
+        <script src="${request.static_url('qa:javascript/question_creation.js')}"></script>
         <link rel="stylesheet" href="${request.static_url('qa:css/question_creation.css')}">
     </head>
     <div class="container" metal:fill-slot="content">

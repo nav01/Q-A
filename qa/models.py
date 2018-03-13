@@ -3,7 +3,7 @@ import enum
 from passlib.hash import pbkdf2_sha256
 from psycopg2 import errorcodes
 from sqlalchemy import (
-    Column, Integer, String, Boolean, Enum, ForeignKey,
+    Column, Integer, String, Boolean, Enum, Float, ForeignKey,
     event,
     CheckConstraint, UniqueConstraint,
     func,
@@ -169,11 +169,10 @@ class QuestionSet(Base):
         db.commit()
 
     def get_questions(self, db):
-        question_plus_type = with_polymorphic(Question, [MultipleChoiceQuestion, TrueFalseQuestion])
-        questions = db.query(question_plus_type).\
+        questions = db.query(Question.LOAD_COMPLETE_POLYMORPHIC_RELATION).\
             join(QuestionSet).\
             filter(Question.question_set_id == self.id).\
-            order_by(question_plus_type.question_order).all()
+            order_by(Question.LOAD_COMPLETE_POLYMORPHIC_RELATION.question_order).all()
         return questions
 
     def last_question_order(question_set_id, db):
@@ -183,6 +182,7 @@ class QuestionType(enum.Enum):
     question = 1
     mcq = 2 #multiple choice question
     tf = 3 #true/false
+    math = 4
 
     @classmethod
     def get_question_class(cls, question_type):
@@ -190,6 +190,8 @@ class QuestionType(enum.Enum):
             return MultipleChoiceQuestion
         elif question_type == cls.tf.name:
             return TrueFalseQuestion
+        elif question_type == cls.math.name:
+            return MathQuestion
         elif question_type == cls.question.name:
             return Question
 
@@ -246,7 +248,7 @@ class Question(Base):
         except IntegrityError as e:
             db.rollback()
             raise cls.handle_db_exception(e, Q_class)
-        except Exception as _:
+        except Exception as e:
             raise FormError()
 
     #Should be an appropriate method for editing all question types, even multipart questions that are yet to be implemented.
@@ -268,10 +270,17 @@ class Question(Base):
         except Exception as _:
             raise FormError()
 
+    def edit_schema(self):
+        from .forms import CSRFSchema, get_question_edit_schema, merge_schemas
+
+        csrf_schema = CSRFSchema()
+        edit_schema =  get_question_edit_schema(self.type)
+        merge_schemas(csrf_schema, edit_schema)
+        return csrf_schema
+
     def user_is_contributor(user_id, question_set_id, question_id, db):
         try:
-            question_plus_type = with_polymorphic(Question, [MultipleChoiceQuestion, TrueFalseQuestion])
-            question = db.query(question_plus_type).\
+            question = db.query(Question.LOAD_COMPLETE_POLYMORPHIC_RELATION).\
                 join(QuestionSet).\
                 join(Topic).\
                 join(User).\
@@ -290,6 +299,80 @@ class Question(Base):
         else:
             raise Q_class.handle_db_exception(e)
 
+class Accuracy(enum.Enum):
+    exact = 1
+    uncertainty = 2
+    percentage = 3
+
+class MathQuestion(Question):
+    __tablename__ = 'math_questions'
+
+    id = Column(Integer, ForeignKey('questions.id', ondelete='cascade'), primary_key=True)
+    correct_answer = Column(Float, nullable=False)
+    units = Column(String(10), nullable=True)
+    units_given = Column(Boolean, nullable=True)
+    accuracy = Column(Enum(Accuracy), nullable=False)
+    accuracy_degree = Column(Float, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            """
+                units IS NULL AND units_given IS NULL OR
+                units IS NOT NULL AND units_given IS NOT NULL
+            """,
+            name='both_unit_columns_or_neither',
+        ),
+        CheckConstraint(
+            """
+                accuracy = 'exact' AND accuracy_degree IS NULL OR
+                accuracy IS NOT NULL AND accuracy != 'exact' AND accuracy_degree IS NOT NULL
+            """,
+            name='accuracy_degree_must_be_specified_if_not_exact',
+        )
+    )
+    __mapper_args__ = {
+        'polymorphic_identity': QuestionType.math,
+    }
+
+    def answer_schema(self, request):
+        from .forms import MathAnswer
+
+        schema = MathAnswer().bind(request=request, question=self)
+        return schema
+
+    def _compare_to_answer_for_report(self, answer):
+        a = answer['answer']
+        if self.accuracy == Accuracy.exact:
+            numerically_correct = self.correct_answer == a
+        elif self.accuracy == Accuracy.uncertainty:
+            numerically_correct = a >= self.correct_answer - self.accuracy_degree and \
+                a <= self.correct_answer + self.accuracy_degree
+        elif self.accuracy == Accuracy.percentage:
+            numerically_correct = a >= self.correct_answer * (1 - self.accuracy_degree / 100.0) and \
+                a <= self.correct_answer * (1 + self.accuracy_degree / 100.0)
+        if 'units' in answer:
+            return (
+                self.units.lower() == answer['units'].lower() and numerically_correct,
+                str(self.correct_answer) + ' ' + self.units,
+                str(a) + ' ' + answer['units'],
+            )
+        else:
+            return (numerically_correct, self.correct_answer, a)
+
+    def report(self, answer):
+        answer_is_correct = self._compare_to_answer_for_report(answer)
+        report = self.__class__.REPORT_TEMPLATE.format(self.description, {}, answer_is_correct[1], answer_is_correct[2])
+        if answer_is_correct[0]:
+            return report.format('glyphicon-ok')
+        else:
+            return report.format('glyphicon-remove')
+
+    def handle_db_exception(e):
+        if e.orig.diag.constraint_name == 'both_unit_columns_or_neither':
+            raise ValueError('Both unit fields must be filled or neither.')
+        elif e.orig.diag.constraint_name == 'accuracy_degree_must_be_specified_if_not_exact.':
+            raise ValueError('Accuracy degree field must be filled if accuracy is other than exact.')
+
 class MultipleChoiceQuestion(Question):
     __tablename__ = 'multiple_choice_questions'
 
@@ -301,12 +384,15 @@ class MultipleChoiceQuestion(Question):
     correct_answer = Column(Integer, nullable=False)
 
     __table_args__ = (
-        CheckConstraint("""
-            choice_one NOT IN (choice_two, choice_three, choice_four) AND
-            choice_two NOT IN (choice_one, choice_three, choice_four) AND
-            choice_three NOT IN (choice_one, choice_two, choice_four) AND
-            choice_four NOT IN (choice_one, choice_two, choice_three)
-        """, name='unique_multiple_choices'),
+        CheckConstraint(
+            """
+                choice_one NOT IN (choice_two, choice_three, choice_four) AND
+                choice_two NOT IN (choice_one, choice_three, choice_four) AND
+                choice_three NOT IN (choice_one, choice_two, choice_four) AND
+                choice_four NOT IN (choice_one, choice_two, choice_three)
+            """,
+            name='unique_multiple_choices',
+        ),
         CheckConstraint('correct_answer >= 0 AND correct_answer <= 3', name='answer_in_range'),
     )
     __mapper_args__ = {
@@ -319,14 +405,6 @@ class MultipleChoiceQuestion(Question):
         answer_choices = MultipleChoiceAnswer.prepare_choices(self)
         schema = MultipleChoiceAnswer().bind(request=request, choices=answer_choices, question=self)
         return schema
-
-    def edit_schema(self):
-        from .forms import CSRFSchema, MultipleChoiceQuestion, merge_schemas
-
-        csrf_schema = CSRFSchema()
-        mcq_schema =  MultipleChoiceQuestion()
-        merge_schemas(csrf_schema, mcq_schema)
-        return csrf_schema
 
     def report(self, answer):
         choices = [self.choice_one, self.choice_two, self.choice_three, self.choice_four]
@@ -353,14 +431,6 @@ class TrueFalseQuestion(Question):
 
         return TrueFalseAnswer().bind(request=request, question=self)
 
-    def edit_schema(self):
-        from .forms import CSRFSchema, TrueFalseQuestion, merge_schemas
-
-        csrf_schema = CSRFSchema()
-        tf_schema = TrueFalseQuestion()
-        merge_schemas(csrf_schema, tf_schema)
-        return csrf_schema
-
     def report(self, answer):
         return Question.report(self.description, bool(self.correct_answer), bool(answer))
 
@@ -368,3 +438,5 @@ class TrueFalseQuestion(Question):
     #that the create method in the super class (Question) can't handle.
     def handle_db_exception(e):
         raise ValueError('Unknown Error.')
+
+Question.LOAD_COMPLETE_POLYMORPHIC_RELATION = with_polymorphic(Question, [MultipleChoiceQuestion, TrueFalseQuestion, MathQuestion])

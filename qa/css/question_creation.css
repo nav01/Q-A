@@ -4,3 +4,8 @@
   text-align: center !important;
   transform: translate(-50%, 0) !important;
 }
+
+/* Disable the accuracy and units given field of math questions by default */
+.item-accuracy_degree, .item-units_given {
+    display:none;
+}
