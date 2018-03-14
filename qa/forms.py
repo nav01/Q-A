@@ -47,6 +47,10 @@ def get_question_select_options(url):
 def merge_schemas(parent, *children):
     parent.children = parent.children + list(itertools.chain(*[child.children for child in children]))
 
+@colander.deferred
+def answer_schema_title(node, kw):
+    return kw.get('question').description
+
 #colander doesn't serialize None to colander.null for some types which is requied
 #for populating edit forms using sqlalchemy's __dict__ method without having
 #to make further modifications
@@ -265,15 +269,7 @@ class MultipleChoiceSchema(CSRFSchema):
         validator = colander.OneOf([models.QuestionType.mcq.name]),
         widget = deform.widget.HiddenWidget(),
     )
-class MultipleChoiceAnswer(CSRFSchema):
-    def prepare_choices(question):
-        choices = []
-        choices.append((0, question.choice_one))
-        choices.append((1, question.choice_two))
-        choices.append((2, question.choice_three))
-        choices.append((3, question.choice_four))
-        return choices
-
+class MultipleChoiceAnswerStructure(colander.Schema):
     @colander.deferred
     def set_choices(node,kw):
         return deform.widget.RadioChoiceWidget(values=kw.get('choices'))
@@ -284,17 +280,22 @@ class MultipleChoiceAnswer(CSRFSchema):
         #to support a variable number of choices.
         return colander.OneOf([x[0] for x in kw.get('choices')])
 
-    @colander.deferred
-    def set_title(node,kw):
-        return kw.get('question').description
-
-    question = colander.SchemaNode(
+    answer = colander.SchemaNode(
         colander.Int(),
-        name = 'answer',
         widget = set_choices,
         validator = set_validator,
-        title = set_title,
+        title = '',
     )
+class MultipleChoiceAnswer(CSRFSchema):
+    def prepare_choices(question):
+        choices = []
+        choices.append((0, question.choice_one))
+        choices.append((1, question.choice_two))
+        choices.append((2, question.choice_three))
+        choices.append((3, question.choice_four))
+        return choices
+
+    answer = MultipleChoiceAnswerStructure(title = answer_schema_title)
 
 class TrueFalseQuestion(colander.Schema):
     description = colander.SchemaNode(
@@ -324,17 +325,20 @@ class TrueFalseSchema(CSRFSchema):
         validator = colander.OneOf([models.QuestionType.tf.name]),
         widget = deform.widget.HiddenWidget(),
     )
-class TrueFalseAnswer(CSRFSchema):
-    @colander.deferred
-    def set_title(node,kw):
-        return kw.get('question').description
-
-    question = colander.SchemaNode(
+class TrueFalseAnswerStructure(colander.Schema):
+    answer = colander.SchemaNode(
         colander.Boolean(true_choices=TRUE_CHOICES, false_choices=FALSE_CHOICES, false_val=0, true_val=1),
-        name = 'answer',
         validator = colander.OneOf([x[0] for x in BOOLEAN_RADIO_CHOICES]),
         widget = deform.widget.RadioChoiceWidget(values=BOOLEAN_RADIO_CHOICES, inline=True),
-        title = set_title,
+        title = '',
+    )
+class TrueFalseAnswer(CSRFSchema):
+    @colander.deferred
+    def widget_title(node, kw):
+        return kw.get('question').description
+
+    answer = TrueFalseAnswerStructure(
+        title = widget_title,
     )
 
 class MathQuestion(colander.Schema):
@@ -433,6 +437,7 @@ class MathAnswerStructure(colander.Schema):
         colander.Float(),
         widget = deform.widget.TextInputWidget(),
         description = units_given,
+        title = '',
     )
     units = colander.SchemaNode(
         colander.String(),
@@ -441,19 +446,17 @@ class MathAnswerStructure(colander.Schema):
 class MathAnswer(CSRFSchema):
     def delete_units_if_not_present(node, kw):
         question = kw.get('question')
-        if question.units and question.units_given:
+        if question.units and question.units_given or not question.units:
             del node['units']
 
     @colander.deferred
     def widget_title(node, kw):
         return kw.get('question').description
 
-
     answer = MathAnswerStructure(
         title = widget_title,
         after_bind = delete_units_if_not_present,
     )
-
 
 class RegistrationSchema(CSRFSchema):
     def __meets_username_requirements(node,value):

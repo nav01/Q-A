@@ -408,7 +408,7 @@ class MultipleChoiceQuestion(Question):
 
     def report(self, answer):
         choices = [self.choice_one, self.choice_two, self.choice_three, self.choice_four]
-        return Question.report(self.description, choices[self.correct_answer], choices[answer])
+        return Question.report(self.description, choices[self.correct_answer], choices[answer['answer']])
 
     def handle_db_exception(e):
         if e.orig.diag.constraint_name == 'unique_multiple_choices':
@@ -432,7 +432,7 @@ class TrueFalseQuestion(Question):
         return TrueFalseAnswer().bind(request=request, question=self)
 
     def report(self, answer):
-        return Question.report(self.description, bool(self.correct_answer), bool(answer))
+        return Question.report(self.description, bool(self.correct_answer), bool(answer['answer']))
 
     #True False Questions are simple enough that they shouldn't raise any specific exceptions
     #that the create method in the super class (Question) can't handle.
